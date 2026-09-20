@@ -1,0 +1,87 @@
+diff --git a/src/ggml-cuda/conv2d-transpose.cu b/src/ggml-cuda/conv2d-transpose.cu
+index 6cbd6f8..5fcbd98 100644
+--- a/src/ggml-cuda/conv2d-transpose.cu
++++ b/src/ggml-cuda/conv2d-transpose.cu
+@@ -67,6 +67,61 @@ static __global__ void conv2d_transpose_kernel(const float * __restrict__ input,
+     output[(out_w * out_h * c_out) * n_idx + (out_w * out_h) * c_idx + (out_w) *out_y_idx + out_x_idx] = accumulator;
+ }
+ 
++// k == s specialization: every output element (co, oh, ow, n) is fed by
++// exactly one input pixel (ih = oh/s, kh = oh%s, iw = ow/s, kw = ow%s), so
++// the generic stride-alignment search (modulo + bounds check per iteration,
++// 4x of the iterations discarded) collapses to a direct gather and the inner
++// loop becomes a plain c_in dot product with co-contiguous kernel reads.
++template <typename kernel_t>
++static __global__ void conv2d_transpose_ks_kernel(const float * __restrict__ input,
++                                                  const kernel_t * __restrict__ kernel,
++                                                  float * __restrict__ output,
++                                                  const int in_w,
++                                                  const int in_h,
++                                                  const int out_w,
++                                                  const int out_h,
++                                                  const int s,
++                                                  const int c_in,
++                                                  const int c_out,
++                                                  const int batches) {
++    const int global_idx = blockIdx.x * blockDim.x + threadIdx.x;
++
++    const int total_elements = out_w * out_h * c_out * batches;
++
++    if (global_idx >= total_elements) {
++        return;
++    }
++
++    const int ow = global_idx % out_w;
++    const int oh = (global_idx / out_w) % out_h;
++    const int co = (global_idx / (out_w * out_h)) % c_out;
++    const int n  = global_idx / (out_w * out_h * c_out);
++
++    const int iw = ow / s;
++    const int kw = ow % s;
++    const int ih = oh / s;
++    const int kh = oh % s;
++
++    const int    in_plane = in_w * in_h;      // pixels per image
++    const size_t k_plane   = (size_t) s * s * c_out;  // kernel values per c_in
++
++    // input ne {in_w, in_h, c_in, N}: linear = w + in_w*h + in_w*in_h*c + ...
++    const float * x  = input  + (size_t) n * in_plane * c_in +
++                       (size_t) ih * in_w + iw;
++    // kernel ne {kw, kh, c_out, c_in}: linear = kw + s*kh + s*s*co + ...
++    const kernel_t * wk = kernel + (size_t) kh * s + kw +
++                          (size_t) co * s * s;
++
++    float acc = 0.0f;
++    for (int ci = 0; ci < c_in; ci++) {
++        acc += x[(size_t) ci * in_plane] *
++               ggml_cuda_cast<float>(wk[(size_t) ci * k_plane]);
++    }
++
++    output[(out_w * out_h * c_out) * n + (out_w * out_h) * co +
++           (out_w) *oh + ow] = acc;
++}
++
+ //input is (W, H, C_in, N), Kernel is (W, H, C_out, C_in)
+ void ggml_cuda_conv_2d_transpose_p0(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
+     const ggml_tensor * kernel = dst->src[0];
+@@ -102,6 +157,20 @@ void ggml_cuda_conv_2d_transpose_p0(ggml_backend_cuda_context & ctx, ggml_tensor
+     const int total  = output_w * output_h * channels_out * batches;
+     const int blocks = (total + CUDA_CONV2D_TRANSPOSE_BLOCK_SIZE - 1) / CUDA_CONV2D_TRANSPOSE_BLOCK_SIZE;
+ 
++    if (kernel_w == stride && kernel_h == stride) {
++        // no-overlap transpose: use the direct-gather kernel
++        if (kernel->type == GGML_TYPE_F16) {
++            conv2d_transpose_ks_kernel<half><<<blocks, CUDA_CONV2D_TRANSPOSE_BLOCK_SIZE, 0, st>>>(
++                input_data, (const half *) kernel_data, output_data, input_w, input_h, output_w,
++                output_h, stride, channels_in, channels_out, batches);
++        } else {
++            conv2d_transpose_ks_kernel<float><<<blocks, CUDA_CONV2D_TRANSPOSE_BLOCK_SIZE, 0, st>>>(
++                input_data, (const float *) kernel_data, output_data, input_w, input_h, output_w,
++                output_h, stride, channels_in, channels_out, batches);
++        }
++        return;
++    }
++
+     if (kernel->type == GGML_TYPE_F16) {
+         conv2d_transpose_kernel<half><<<blocks, CUDA_CONV2D_TRANSPOSE_BLOCK_SIZE, 0, st>>>(
+             input_data, (const half *) kernel_data, output_data, input_w, input_h, output_w, output_h, kernel_w,

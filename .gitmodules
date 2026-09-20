@@ -1,0 +1,19 @@
+[submodule "ggml"]
+	path = cpp_ggml/third_party/ggml
+	url = https://github.com/ggml-org/ggml
+	shallow = true
+[submodule "cpp_ggml/third_party/vggt-omega-src"]
+	path = cpp_ggml/third_party/vggt-omega-src
+	url = https://github.com/facebookresearch/vggt-omega.git
+[submodule "cpp_ggml/third_party/pi3-src"]
+	path = cpp_ggml/third_party/pi3-src
+	url = https://github.com/yyfz/Pi3.git
+	shallow = true
+[submodule "cpp_ggml/third_party/vggt-src"]
+	path = cpp_ggml/third_party/vggt-src
+	url = https://github.com/facebookresearch/vggt.git
+	shallow = true
+[submodule "cpp_ggml/third_party/dust3r-src"]
+	path = cpp_ggml/third_party/dust3r-src
+	url = https://github.com/naver/dust3r.git
+	shallow = true

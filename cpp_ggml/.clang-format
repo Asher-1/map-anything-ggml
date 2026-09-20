@@ -1,0 +1,14 @@
+# Google C++ style, adapted to this codebase's existing conventions
+# (4-space indent, 100 columns) so formatting is non-destructive: run
+# `clang-format -i <file>` before committing new or heavily edited files.
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 100
+AccessModifierOffset: -4
+DerivePointerAlignment: false
+PointerAlignment: Left
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+SpaceAfterCStyleCast: false

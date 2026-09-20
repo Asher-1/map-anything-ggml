@@ -57,17 +57,65 @@ The framework provides the **complete stack**—data processing, training, infer
 
 ![Overview](./assets/teaser.png)
 
+## cpp_ggml — Pure C++ (ggml) Inference
+
+[`cpp_ggml/`](cpp_ggml/) is a **pure C++ ggml inference stack** for six
+feed-forward 3D-vision models with **zero PyTorch dependency at runtime**:
+VGGT-Omega (default), VGGT-1B, Pi3, Pi3X, MapAnything and DUSt3R — each
+verified against its official PyTorch implementation with the
+quantization x backend gate matrix (f32/f16/q8_0/q5_K x
+CPU/CUDA/Vulkan) and the official MapAnything ETH3D protocol
+(130 sets, two-sided deltas < 1% everywhere).
+
+**Cross-model accuracy** (official protocol, official torch side — full
+tables in [cpp_ggml/FEATURE_PARITY_AUDIT.md](cpp_ggml/FEATURE_PARITY_AUDIT.md)):
+
+| Model | pointmaps↓ | depth↓ | ATE↓ | rot°↓ | metric scale↓ | CUDA speedup |
+|---|---|---|---|---|---|---|
+| **vggt-omega** (default) | **0.0302** | **0.0208** | **0.0065** | **0.56** | 0.762 | 0.87x |
+| pi3x | 0.0533 | 0.0369 | 0.0162 | 2.11 | 0.251 | 1.44-1.50x |
+| mapanything | 0.0553 | 0.0469 | 0.0124 | 0.92 | **0.162** | **1.64-2.23x** |
+| pi3 | 0.0650 | 0.0485 | 0.0172 | 1.82 | 0.733 | ~1.0x |
+| vggt-1b | 0.0674 | 0.0541 | 0.0208 | 2.28 | 0.788 | 1.60-1.69x |
+| dust3r | 0.1008 | 0.1033 | 0.0509 | 2.77 | 0.897 | **1.71-1.75x** |
+
+**Pick a model**: vggt-omega for best accuracy · mapanything for metric
+scale & poses · dust3r for resource-constrained devices / throughput ·
+pi3x for a balanced paper-pinned alternative.
+
+Example charts (per-model latency bars, gate heatmaps, quantization
+Pareto, parity scatters and courtyard reconstructions — all of them in
+[cpp_ggml/benchmarks/README.md](cpp_ggml/benchmarks/README.md)):
+
+| vggt-omega latency | gate heatmap | courtyard recon |
+|---|---|---|
+| ![latency](cpp_ggml/benchmarks/charts/vggt-omega/e2e_latency_bar.png) | ![heatmap](cpp_ggml/benchmarks/charts/vggt-omega/pose_error_heatmap.png) | ![recon](cpp_ggml/benchmarks/charts/vggt-omega/recon_depth_comparison.png) |
+
+One command from a fresh clone (downloads checkpoints, converts to GGUF,
+builds the C++ runtime and runs inference):
+
+```bash
+./run_mapggml.sh demo --models 512            # vggt-omega, the default
+./run_mapggml.sh demo --models dust3r         # the throughput pick
+./run_mapggml.sh help                         # full model-selection guide
+```
+
+See [cpp_ggml/README.md](cpp_ggml/README.md) for the output contracts,
+quantization matrices and the porting notes.
+
 ## Table of Contents
 
 - [Overview](#overview)
+- [cpp\_ggml — Pure C++ (ggml) Inference](#cpp_ggml--pure-c-ggml-inference)
+- [Table of Contents](#table-of-contents)
 - [Quick Start](#quick-start)
   - [Installation](#installation)
   - [Image-Only Inference](#image-only-inference)
   - [Multi-Modal Inference](#multi-modal-inference)
   - [Running External Models](#running-external-models)
     - [Available Models](#available-models)
-    - [Installation](#external-model-installation)
-    - [Quick Start Example](#external-model-quick-start)
+    - [Installation {#external-model-installation}](#installation-external-model-installation)
+    - [Quick Start Example {#external-model-quick-start}](#quick-start-example-external-model-quick-start)
     - [Running Inference](#running-inference)
     - [Unified Output Format](#unified-output-format)
     - [Notes on Input Requirements](#notes-on-input-requirements)
@@ -82,18 +130,18 @@ The framework provides the **complete stack**—data processing, training, infer
   - [Comparing with External Models](#comparing-with-external-models)
   - [Command-Line Arguments](#command-line-arguments)
   - [Output Files](#output-files)
-- [COLMAP & GSplat Support](#colmap--gsplat-support)
+- [COLMAP \& GSplat Support](#colmap--gsplat-support)
   - [Exporting to COLMAP Format](#exporting-to-colmap-format)
   - [Visualizing COLMAP Reconstruction in Rerun](#visualizing-colmap-reconstruction-in-rerun)
   - [Integration with Gaussian Splatting](#integration-with-gaussian-splatting)
-- [Data Processing for Training & Benchmarking](#data-processing-for-training--benchmarking)
+- [Data Processing for Training \& Benchmarking](#data-processing-for-training--benchmarking)
 - [Training](#training)
 - [Benchmarking](#benchmarking)
   - [Available Benchmarks](#available-benchmarks)
 - [Code License](#code-license)
 - [Models](#models)
-  - [Hugging Face Hub Models](#-hugging-face-hub-models)
-  - [Hugging Face Hub Models (V1 Release)](#-hugging-face-hub-models-used-for-v1-release-in-september-2025)
+  - [🤗 Hugging Face Hub Models](#-hugging-face-hub-models)
+  - [🤗 Hugging Face Hub Models used for V1 Release in September 2025](#-hugging-face-hub-models-used-for-v1-release-in-september-2025)
   - [Model Selection Guide](#model-selection-guide)
   - [Optional Checkpoint Conversion](#optional-checkpoint-conversion)
 - [Building Blocks for MapAnything](#building-blocks-for-mapanything)

@@ -174,3 +174,12 @@ cython_debug/
 
 # VSCode
 .vscode
+*.gguf
+*.pt
+*.bin
+cpp_ggml/build-*
+cpp_ggml/models/pytorch/
+cpp_ggml/models/gguf/
+*.pt
+*.gguf
+*.json

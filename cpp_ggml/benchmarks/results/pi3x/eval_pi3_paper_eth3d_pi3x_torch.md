@@ -1,0 +1,10 @@
+# pi3 paper ETH3D protocol (Table 3): stride 5, width 518, Umeyama+ICP, side=torch, 13 scenes
+
+| metric | value | paper |
+|---|---|---|
+| acc_mean | 0.0566 | 0.194 |
+| acc_med | 0.0259 | 0.131 |
+| comp_mean | 0.2632 | 0.21 |
+| comp_med | 0.1503 | 0.128 |
+| nc_mean | 0.4752 | 0.883 |
+| nc_med | 0.4794 | 0.969 |
