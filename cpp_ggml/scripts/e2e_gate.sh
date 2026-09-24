@@ -5,7 +5,7 @@
 #   1. (optional) regenerate the PyTorch reference npz + stage dumps
 #   2. run the C++ CLI on the same frames
 #   3. compare final outputs against the reference
-#   4. optional stage-dump comparison (MAPGGML_DUMP_STAGE must match in 1+2)
+#   4. optional stage-dump comparison (--dump-dir must match in 1+2)
 #
 # Usage:
 #   scripts/e2e_gate.sh [--ckpt models/pytorch/vggt_omega_1b_512.pt] \
@@ -28,6 +28,7 @@ H=512; W=512; S=2
 STAGES="/tmp/vggt_stages"
 BUILD_DIR="build-cpu"
 SKIP_TORCH=0
+DUMP_DIR="${DUMP_DIR:-}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ckpt) CKPT="$2"; shift 2;;
@@ -39,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --S) S="$2"; shift 2;;
     --stages) STAGES="$2"; shift 2;;
     --build-dir) BUILD_DIR="$2"; shift 2;;
+    --dump-dir) DUMP_DIR="$2"; shift 2;;
     --skip-torch) SKIP_TORCH=1; shift;;
     *) echo "unknown arg $1"; exit 1;;
   esac
@@ -67,11 +69,13 @@ test -f "$STAGES/ref.npz" || { echo "missing $STAGES/ref.npz"; exit 1; }
 
 echo "== [3/3] C++ inference ($MODEL) =="
 CLI="$BUILD_DIR/bin/vggt-cli"
-if [[ -n "${MAPGGML_DUMP_STAGE:-}" ]]; then
-  echo "  MAPGGML_DUMP_STAGE=$MAPGGML_DUMP_STAGE -> stage dumps enabled"
-  MAPGGML_DUMP_STAGE="$MAPGGML_DUMP_STAGE" "$CLI" \
+if [[ -n "$DUMP_DIR" ]]; then
+  # the stage-dump directory travels as an explicit CLI flag
+  # (RuntimeOptions::dump_dir) — never via the environment
+  echo "  stage dumps enabled -> $DUMP_DIR (--dump-dir)"
+  "$CLI" \
     --model "$MODEL" --bin "$FRAMES" --H "$H" --W "$W" --S "$S" \
-    --out-prefix "$OUT" | tail -3
+    --out-prefix "$OUT" --dump-dir "$DUMP_DIR" | tail -3
 else
   "$CLI" \
     --model "$MODEL" --bin "$FRAMES" --H "$H" --W "$W" --S "$S" \

@@ -32,9 +32,10 @@ class IGraphBuilder {
 public:
     virtual ~IGraphBuilder() = default;
     // Load-time: stage weights, build the compute graph(s), upload static
-    // inputs. S/H/W come from the request (images or --bin).
+    // inputs. S/H/W come from the request (images or --bin); opts carries
+    // the debug switches (dump_dir/dot_path — see RuntimeOptions).
     virtual bool init(const GGUFModel& model, Backend be, int s, int h,
-                      int w) = 0;
+                      int w, const RuntimeOptions& opts) = 0;
     // One inference: imgs is (S,3,H,W) C-order f32 in [0,1].
     virtual bool run(const float* imgs, VGGTOutputs& out) = 0;
 };

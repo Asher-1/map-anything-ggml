@@ -33,11 +33,12 @@ namespace mapggml {
 
 // Parity stage-dump hooks are compiled only when requested at configure
 // time (cmake -DMAPGGML_ENABLE_DUMP=ON); production builds drop them to
-// save binary size and compile time. At runtime they still require the
-// MAPGGML_DUMP_STAGE environment variable.
+// save binary size and compile time. At runtime they are driven by
+// RuntimeOptions::dump_dir (explicitly passed through the VGGTRuntime
+// constructor — no environment variables).
 #ifdef MAPGGML_ENABLE_DUMP
-#define MAP_DUMP_ACTIVE() (getenv("MAPGGML_DUMP_STAGE") != nullptr)
-#define MAP_DUMP_DIR() getenv("MAPGGML_DUMP_STAGE")
+#define MAP_DUMP_ACTIVE() (!opts.dump_dir.empty())
+#define MAP_DUMP_DIR() (opts.dump_dir.c_str())
 #else
 #define MAP_DUMP_ACTIVE() false
 #define MAP_DUMP_DIR() ""
@@ -180,7 +181,7 @@ struct VGGTRuntime::Impl : IGraphBuilder {
     ggml_tensor* out_patches = nullptr;    // backbone output (dump point)
     ggml_tensor* out_last = nullptr;       // cached layer 23 output
     std::vector<ggml_tensor*> inter_nodes; // aggregator cached outputs
-    std::vector<float> stage_imgs;
+    std::vector<float> stage_imgs;         // per-run input staging buffer
     ggml_tensor* in_images = nullptr;  // {W, H, 3, S}
     ggml_tensor* in_mean = nullptr;    // {1,1,3,1}
     ggml_tensor* in_std = nullptr;     // {1,1,3,1}
@@ -205,6 +206,10 @@ struct VGGTRuntime::Impl : IGraphBuilder {
     std::vector<float> host_cos_bb, host_sin_bb, host_cos_agg, host_sin_agg;
     std::vector<float> host_uv_dp[5];
     double build_ms = 0.0;  // weights staging + graph build (set by ctor)
+    // explicit runtime switches (dump_dir / dot_path — see RuntimeOptions);
+    // read by the MAP_DUMP_ACTIVE/MAP_DUMP_DIR macros below, so every dump
+    // site must stay inside an Impl member function
+    RuntimeOptions opts;
 #ifdef MAPGGML_ENABLE_DUMP
     mutable std::vector<ggml_tensor*> dbg_nodes;      // dumped after stage 1
     mutable std::vector<std::string> dbg_names;
@@ -346,7 +351,7 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         k = ggml_cont(ctx, ggml_permute(ctx, k, 0, 2, 1, 3));
         v = ggml_cont(ctx, ggml_permute(ctx, v, 0, 2, 1, 3));
 #ifdef MAPGGML_ENABLE_DUMP
-        static bool dbg_attn = getenv("MAPGGML_DUMP_STAGE") == nullptr;
+        static bool dbg_attn = !MAP_DUMP_ACTIVE();
         ggml_tensor* v_p = v;
         ggml_tensor* q_p = q;
         ggml_tensor* k_p = k;
@@ -470,15 +475,15 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         ggml_tensor* tokens =
             ggml_concat(ctx, ggml_concat(ctx, cls, stor, 1), x, 1);  // {C,Nbb,S}
 #ifdef MAPGGML_ENABLE_DUMP
-        const bool dbg = getenv("MAPGGML_DUMP_STAGE") != nullptr;
+        const bool dbg = MAP_DUMP_ACTIVE();
         if (dbg) {
             ggml_set_output(x);
             dbg_nodes.push_back(x);
-            dbg_names.push_back(std::string(getenv("MAPGGML_DUMP_STAGE")) +
+            dbg_names.push_back(std::string(MAP_DUMP_DIR()) +
                                 "/cpp_conv4.bin");
             ggml_set_output(tokens);
             dbg_nodes.push_back(tokens);
-            dbg_names.push_back(std::string(getenv("MAPGGML_DUMP_STAGE")) +
+            dbg_names.push_back(std::string(MAP_DUMP_DIR()) +
                                 "/cpp_tokens0.bin");
         }
 #else
@@ -489,7 +494,7 @@ struct VGGTRuntime::Impl : IGraphBuilder {
                            false, in_cos_bb, in_sin_bb, Nbb, S,
 #ifdef MAPGGML_ENABLE_DUMP
                            (dbg && i == 0)
-                               ? (std::string(getenv("MAPGGML_DUMP_STAGE")) +
+                               ? (std::string(MAP_DUMP_DIR()) +
                                   "/cpp_b0")
                                      .c_str()
                                : nullptr
@@ -501,7 +506,7 @@ struct VGGTRuntime::Impl : IGraphBuilder {
             if (dbg && (i == 0 || i == 1 || i == 3 || i == 7 || i == 11 || i == 15 || i == 19 || i == 23)) {
                 char f[256];
                 snprintf(f, sizeof(f), "%s/cpp_blk%d.bin",
-                         getenv("MAPGGML_DUMP_STAGE"), i);
+                         MAP_DUMP_DIR(), i);
                 ggml_set_output(tokens);  // gallocr never reuses outputs
                 dbg_nodes.push_back(tokens);
                 dbg_names.push_back(f);
@@ -980,30 +985,35 @@ struct VGGTRuntime::Impl : IGraphBuilder {
     }
 
     virtual bool build_stage1() {
+        // static inputs get their OWN backend buffer (see build_stage1_vggt
+        // for why: the gallocr pool recycles their space mid-graph after the
+        // last use, so "upload once" would not survive a second run())
+        ictx = ggml_init({ggml_tensor_overhead() * 64, nullptr, true});
+        if (!ictx) return false;
         // ---- graph inputs (in_images is the only per-run input) ----
-        in_images = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, W, H, 3, S);
+        in_images = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, W, H, 3, S);
         ggml_set_input(in_images);
-        in_mean = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_std = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_cos_bb = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh, nh, Nbb, S);
-        in_sin_bb = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh, nh, Nbb, S);
+        in_mean = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_std = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_cos_bb = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh, nh, Nbb, S);
+        in_sin_bb = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh, nh, Nbb, S);
         ggml_set_input(in_cos_bb);
         ggml_set_input(in_sin_bb);
-        in_cos_agg = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh, nh, Nagg, S);
-        in_sin_agg = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh, nh, Nagg, S);
+        in_cos_agg = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh, nh, Nagg, S);
+        in_sin_agg = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh, nh, Nagg, S);
         ggml_set_input(in_cos_agg);
         ggml_set_input(in_sin_agg);
-        in_one = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 1, 1);
-        in_fov_min = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 1, 1);
+        in_one = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 1, 1);
+        in_fov_min = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 1, 1);
         ggml_set_input(in_one);
         ggml_set_input(in_fov_min);
         static const int kTapChDpt[4] = {256, 512, 1024, 1024};
         for (int i = 0; i < 4; i++) {
-            uv_dp[i] = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, Wp, Hp,
+            uv_dp[i] = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, Wp, Hp,
                                           kTapChDpt[i], 1);
             ggml_set_input(uv_dp[i]);
         }
-        uv_dp[4] = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, Wp * 4, Hp * 4,
+        uv_dp[4] = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, Wp * 4, Hp * 4,
                                       256, 1);
         ggml_set_input(uv_dp[4]);
 
@@ -1057,6 +1067,10 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         ggml_build_forward_expand(graph, out_depth);
         ggml_build_forward_expand(graph, out_depthc);
         galloc = ggml_gallocr_new(ggml_backend_get_default_buffer_type(be.handle));
+        // give the static inputs their own buffer BEFORE the graph pool is
+        // allocated, so gallocr skips them (they must survive across runs)
+        ibuf = ggml_backend_alloc_ctx_tensors(ictx, be.handle);
+        if (!ibuf) return false;
         if (!ggml_gallocr_alloc_graph(galloc, graph)) {
             log_error("graph allocation failed");
             return false;
@@ -1104,12 +1118,12 @@ struct VGGTRuntime::Impl : IGraphBuilder {
             return std::chrono::duration<double, std::milli>(b - a).count();
         };
         out.timing_ms["build_graphs"] = build_ms;
-        const auto t_all0 = now();
-        stage_imgs.assign(imgs, imgs + (size_t)S * 3 * H * W);
-
         const auto t0 = now();
         // the only per-run input; every other input is static and was
-        // uploaded once at build time
+        // uploaded once at build time. imgs goes straight to the backend:
+        // normalization is the graph's first op (GGUF mean/std), so no
+        // host-side intermediate buffer is needed.
+        stage_imgs.assign(imgs, imgs + (size_t)S * 3 * H * W);
         ggml_backend_tensor_set(in_images, stage_imgs.data(), 0,
                                 (size_t)S * 3 * H * W * sizeof(float));
         const auto t1 = now();
@@ -1208,9 +1222,10 @@ struct VGGTRuntime::Impl : IGraphBuilder {
     // Load-time: shapes/derived constants, weight staging, graph build,
     // one-time upload of static inputs.
     bool init(const GGUFModel& model, Backend backend, int n_views, int height,
-              int width) override {
+              int width, const RuntimeOptions& runtime_opts) override {
         m = &model;
         be = backend;
+        opts = runtime_opts;
         S = n_views;
         H = height;
         W = width;
@@ -1244,12 +1259,24 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         build_ms = std::chrono::duration<double, std::milli>(
                        std::chrono::steady_clock::now() - build_t0)
                        .count();
+        // graph-shape debugging aid, valid in every build for every
+        // registered builder (moved here from the pi3 builder so the
+        // switch is uniform; unlike the dumps it has no compile-time
+        // dependency)
+        if (!opts.dot_path.empty())
+            ggml_graph_dump_dot(graph, nullptr, opts.dot_path.c_str());
         return true;
     }
+
+    // own backend buffer for the static graph inputs (see build_stage1_vggt)
+    ggml_context* ictx = nullptr;
+    ggml_backend_buffer_t ibuf = nullptr;
 
     ~Impl() {
         if (galloc) ggml_gallocr_free(galloc);
         if (gctx) ggml_free(gctx);
+        if (ibuf) ggml_backend_buffer_free(ibuf);
+        if (ictx) ggml_free(ictx);
         if (wbuf) ggml_backend_buffer_free(wbuf);
         if (wctx) ggml_free(wctx);
     }
@@ -1994,26 +2021,35 @@ struct VGGTRuntime::VGGTImpl : VGGTRuntime::Impl {
 
     bool build_stage1_vggt() {
         log_info("vggt: creating graph inputs");
+        // Static inputs get their OWN backend buffer, not the gallocr compute
+        // pool: the pool recycles memory across ops and a stray out-of-range
+        // write from a later op clobbered a static table that the NEXT
+        // run() would read (measured: in_cos_v drifted 47.8 after one
+        // compute). ggml_gallocr skips tensors that already carry a buffer,
+        // so pre-allocating them here removes them from the pool.
+        ictx = ggml_init({ggml_tensor_overhead() * 64, nullptr, true});
+        if (!ictx) return false;
         // ---- graph inputs (in_images is the only per-run input) ----
-        in_images = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, W, H, 3, S);
+        in_images = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, W, H, 3, S);
         ggml_set_input(in_images);
-        in_mean = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_std = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_mean = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_std = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
         const int dh_l = C / nh;
-        in_cos_v = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
-        in_sin_v = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
+        in_cos_v = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
+        in_sin_v = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
         ggml_set_input(in_cos_v);
         ggml_set_input(in_sin_v);
-        in_pos_embed = ggml_new_tensor_3d(gctx, GGML_TYPE_F32, C, 1 + P, 1);
+        in_pos_embed = ggml_new_tensor_3d(ictx, GGML_TYPE_F32, C, 1 + P, 1);
         ggml_set_input(in_pos_embed);
-        in_one = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 1, 1);
+        in_one = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 1, 1);
         ggml_set_input(in_one);
         for (int i = 0; i < 4; i++) {
-            uv_tap[i] = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, Wp, Hp,
+            uv_tap[i] = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, Wp, Hp,
                                            kTapChV[i], 1);
             ggml_set_input(uv_tap[i]);
         }
-        uv_fused = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, Wp * m->meta.patch_size,
+        uv_fused = ggml_new_tensor_4d(ictx, GGML_TYPE_F32,
+                                      Wp * m->meta.patch_size,
                                       Hp * m->meta.patch_size, 128, 1);
         ggml_set_input(uv_fused);
 
@@ -2076,6 +2112,10 @@ struct VGGTRuntime::VGGTImpl : VGGTRuntime::Impl {
         ggml_build_forward_expand(graph, out_pts);
         ggml_build_forward_expand(graph, out_ptsc);
         galloc = ggml_gallocr_new(ggml_backend_get_default_buffer_type(be.handle));
+        // give the static inputs their own buffer BEFORE the graph pool is
+        // allocated, so gallocr skips them (they must survive across runs)
+        ibuf = ggml_backend_alloc_ctx_tensors(ictx, be.handle);
+        if (!ibuf) return false;
         if (!ggml_gallocr_alloc_graph(galloc, graph)) {
             log_error("vggt: graph allocation failed");
             return false;
@@ -2429,16 +2469,21 @@ struct VGGTRuntime::Pi3Impl : VGGTRuntime::VGGTImpl {
 
     bool build_stage1_pi3() {
         log_info("pi3: creating graph inputs");
-        in_images = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, W, H, 3, S);
+        // static inputs get their OWN backend buffer (see build_stage1_vggt
+        // for why: the gallocr pool recycles their space mid-graph after the
+        // last use, so "upload once" would not survive a second run())
+        ictx = ggml_init({ggml_tensor_overhead() * 64, nullptr, true});
+        if (!ictx) return false;
+        in_images = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, W, H, 3, S);
         ggml_set_input(in_images);
-        in_mean = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_std = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_mean = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_std = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
         const int dh_l = C / nh;
-        in_cos_v = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
-        in_sin_v = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
+        in_cos_v = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
+        in_sin_v = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
         ggml_set_input(in_cos_v);
         ggml_set_input(in_sin_v);
-        in_pos_embed = ggml_new_tensor_3d(gctx, GGML_TYPE_F32, C, 1 + P, 1);
+        in_pos_embed = ggml_new_tensor_3d(ictx, GGML_TYPE_F32, C, 1 + P, 1);
         ggml_set_input(in_pos_embed);
         // (no in_one: pi3's conf head outputs raw logits, nothing adds 1)
 
@@ -2547,11 +2592,15 @@ struct VGGTRuntime::Pi3Impl : VGGTRuntime::VGGTImpl {
             ggml_build_forward_expand(graph, dbg_nodes[i]);
 #endif
         galloc = ggml_gallocr_new(ggml_backend_get_default_buffer_type(be.handle));
+        // give the static inputs their own buffer BEFORE the graph pool is
+        // allocated, so gallocr skips them (they must survive across runs)
+        ibuf = ggml_backend_alloc_ctx_tensors(ictx, be.handle);
+        if (!ibuf) return false;
         if (!ggml_gallocr_alloc_graph(galloc, graph)) {
             log_error("pi3: graph allocation failed");
             return false;
         }
-        log_info("pi3: graph allocation done, uploading static inputs");
+log_info("pi3: graph allocation done, uploading static inputs");
         ggml_backend_tensor_set(in_mean, m->meta.img_mean, 0, 3 * sizeof(float));
         ggml_backend_tensor_set(in_std, m->meta.img_std, 0, 3 * sizeof(float));
         ggml_backend_tensor_set(in_cos_v, host_cos_v.data(), 0,
@@ -2562,10 +2611,6 @@ struct VGGTRuntime::Pi3Impl : VGGTRuntime::VGGTImpl {
                                 host_pos_embed.size() * sizeof(float));
         log_info("graph built: %d nodes (pi3: encoder+decoder+3 heads)",
                  ggml_graph_n_nodes(graph));
-        {
-            const char* dot = getenv("MAPGGML_DOT");
-            if (dot) ggml_graph_dump_dot(graph, NULL, dot);
-        }
         return true;
     }
 
@@ -2767,11 +2812,16 @@ struct VGGTRuntime::MapAnythingImpl final : VGGTRuntime::VGGTImpl {
 
     bool build_stage1_mapanything() {
         log_info("mapanything: creating graph inputs");
-        in_images = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, W, H, 3, S);
+        // static inputs get their OWN backend buffer (see build_stage1_vggt
+        // for why: the gallocr pool recycles their space mid-graph after the
+        // last use, so "upload once" would not survive a second run())
+        ictx = ggml_init({ggml_tensor_overhead() * 64, nullptr, true});
+        if (!ictx) return false;
+        in_images = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, W, H, 3, S);
         ggml_set_input(in_images);
-        in_mean = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_std = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_pos_embed = ggml_new_tensor_3d(gctx, GGML_TYPE_F32, C, 1 + P, 1);
+        in_mean = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_std = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_pos_embed = ggml_new_tensor_3d(ictx, GGML_TYPE_F32, C, 1 + P, 1);
         ggml_set_input(in_pos_embed);
 
         // ---- encoder (DINOv2 ViT-G, first 24 blocks, no final norm) ----
@@ -2871,21 +2921,21 @@ struct VGGTRuntime::MapAnythingImpl final : VGGTRuntime::VGGTImpl {
 #ifdef MAPGGML_ENABLE_DUMP
         if (MAP_DUMP_ACTIVE()) dump_node(tokens, "vg_ma_ln_in");
 #endif
-        ggml_tensor* ln_final_dbg = ln(gctx, tokens, w("is_norm.weight"),
-                                       w("is_norm.bias"), 1e-6f);
+        // one shared is_norm LayerNorm: the full map feeds the parity dump,
+        // the tail view is the final scale-token feature
+        ggml_tensor* ln_final = ln(gctx, tokens, w("is_norm.weight"),
+                                   w("is_norm.bias"), 1e-6f);
+        // final scale-token feature {C, 1, 1}
+        ggml_tensor* scale_feat = ggml_cont(gctx, ggml_view_3d(
+            gctx, ln_final, C, 1, 1, C * sizeof(float), C * sizeof(float),
+            (size_t)S * Nv * C * sizeof(float)));
 #ifdef MAPGGML_ENABLE_DUMP
-        if (MAP_DUMP_ACTIVE()) dump_node(ln_final_dbg, "vg_ma_ln_out");
+        if (MAP_DUMP_ACTIVE()) dump_node(ln_final, "vg_ma_ln_out");
 #endif
         ggml_tensor* f_ifr0 = spatial_feat(h_penult0);
         ggml_tensor* f_ifr1 = spatial_feat(h_penult1);
         ggml_tensor* f_final = spatial_feat(tokens);
         ggml_tensor* enc_final = ggml_cont(gctx, pat);   // no norm
-        // final scale-token feature {C, 1, 1}
-        ggml_tensor* scale_feat = ggml_cont(gctx, ggml_view_3d(
-            gctx, ln(gctx, tokens, w("is_norm.weight"), w("is_norm.bias"),
-                     1e-6f),
-            C, 1, 1, C * sizeof(float), C * sizeof(float),
-            (size_t)S * Nv * C * sizeof(float)));
 #ifdef MAPGGML_ENABLE_DUMP
         if (MAP_DUMP_ACTIVE()) {
             dump_node(enc, "vg_ma_enc");
@@ -3000,11 +3050,15 @@ struct VGGTRuntime::MapAnythingImpl final : VGGTRuntime::VGGTImpl {
             ggml_build_forward_expand(graph, dbg_nodes[i]);
 #endif
         galloc = ggml_gallocr_new(ggml_backend_get_default_buffer_type(be.handle));
+        // give the static inputs their own buffer BEFORE the graph pool is
+        // allocated, so gallocr skips them (they must survive across runs)
+        ibuf = ggml_backend_alloc_ctx_tensors(ictx, be.handle);
+        if (!ibuf) return false;
         if (!ggml_gallocr_alloc_graph(galloc, graph)) {
             log_error("mapanything: graph allocation failed");
             return false;
         }
-        log_info("mapanything: graph allocation done, uploading static inputs");
+log_info("mapanything: graph allocation done, uploading static inputs");
         ggml_backend_tensor_set(in_mean, m->meta.img_mean, 0, 3 * sizeof(float));
         ggml_backend_tensor_set(in_std, m->meta.img_std, 0, 3 * sizeof(float));
         ggml_backend_tensor_set(in_pos_embed, host_pos_embed.data(), 0,
@@ -3425,14 +3479,19 @@ struct VGGTRuntime::Dust3rImpl final : VGGTRuntime::VGGTImpl {
 
     bool build_stage1_dust3r() {
         log_info("dust3r: creating graph inputs");
-        in_images = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, W, H, 3, S);
+        // static inputs get their OWN backend buffer (see build_stage1_vggt
+        // for why: the gallocr pool recycles their space mid-graph after the
+        // last use, so "upload once" would not survive a second run())
+        ictx = ggml_init({ggml_tensor_overhead() * 64, nullptr, true});
+        if (!ictx) return false;
+        in_images = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, W, H, 3, S);
         ggml_set_input(in_images);
-        in_mean = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_std = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_cos_v = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh, nh, P, S);
-        in_sin_v = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh, nh, P, S);
-        in_cos_dec = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dhd, nhd, P, S);
-        in_sin_dec = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dhd, nhd, P, S);
+        in_mean = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_std = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_cos_v = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh, nh, P, S);
+        in_sin_v = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh, nh, P, S);
+        in_cos_dec = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dhd, nhd, P, S);
+        in_sin_dec = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dhd, nhd, P, S);
         ggml_set_input(in_cos_v);
         ggml_set_input(in_sin_v);
         ggml_set_input(in_cos_dec);
@@ -3551,11 +3610,15 @@ struct VGGTRuntime::Dust3rImpl final : VGGTRuntime::VGGTImpl {
             ggml_build_forward_expand(graph, dbg_nodes[i]);
 #endif
         galloc = ggml_gallocr_new(ggml_backend_get_default_buffer_type(be.handle));
+        // give the static inputs their own buffer BEFORE the graph pool is
+        // allocated, so gallocr skips them (they must survive across runs)
+        ibuf = ggml_backend_alloc_ctx_tensors(ictx, be.handle);
+        if (!ibuf) return false;
         if (!ggml_gallocr_alloc_graph(galloc, graph)) {
             log_error("dust3r: graph allocation failed");
             return false;
         }
-        log_info("dust3r: graph allocation done, uploading static inputs");
+log_info("dust3r: graph allocation done, uploading static inputs");
         // static uploads (ggml_set_input only MARKS the tensors — pitfall #2)
         ggml_backend_tensor_set(in_mean, m->meta.img_mean, 0,
                                 3 * sizeof(float));
@@ -3959,7 +4022,11 @@ struct VGGTRuntime::Pi3XImpl final : VGGTRuntime::Pi3Impl {
             nullptr, true};
         gctx = ggml_init(gp);
         if (!gctx) return false;
-
+        // static inputs get their OWN backend buffer (see build_stage1_vggt
+        // for why: the gallocr pool recycles their space mid-graph after the
+        // last use, so "upload once" would not survive a second run())
+        ictx = ggml_init({ggml_tensor_overhead() * 64, nullptr, true});
+        if (!ictx) return false;
         // static uv tables for the conv heads: level grids and the full
         // resolution; aspect ratio = image w/h (pi3x conv_head convention)
         const int dims[3] = {Wp, 2 * Wp, 4 * Wp};
@@ -3967,19 +4034,19 @@ struct VGGTRuntime::Pi3XImpl final : VGGTRuntime::Pi3Impl {
         const float ar = (float)W / (float)H;
         for (int i = 0; i < 3; i++) {
             host_uv[i] = uv_table(dims[i], dys[i], ar);
-            in_uv[i] = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dims[i],
+            in_uv[i] = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dims[i],
                                           dys[i], 2, 1);
             ggml_set_input(in_uv[i]);
             in_uv_c[i] = in_uv[i];
         }
         host_uv[3] = uv_table(W, H, ar);
-        in_uv[3] = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, W, H, 2, 1);
+        in_uv[3] = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, W, H, 2, 1);
         ggml_set_input(in_uv[3]);
         in_uv_c[3] = in_uv[3];
         build_rope_rows_metric();
-        in_cos_m = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 512 / nh_m, nh_m,
+        in_cos_m = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 512 / nh_m, nh_m,
                                       Nagg * S, 1);
-        in_sin_m = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 512 / nh_m, nh_m,
+        in_sin_m = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 512 / nh_m, nh_m,
                                       Nagg * S, 1);
         ggml_set_input(in_cos_m);
         ggml_set_input(in_sin_m);
@@ -3988,16 +4055,16 @@ struct VGGTRuntime::Pi3XImpl final : VGGTRuntime::Pi3Impl {
 
     bool build_stage1_pi3x() {
         log_info("pi3x: creating graph inputs");
-        in_images = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, W, H, 3, S);
+        in_images = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, W, H, 3, S);
         ggml_set_input(in_images);
-        in_mean = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
-        in_std = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_mean = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
+        in_std = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, 1, 1, 3, 1);
         const int dh_l = C / nh;
-        in_cos_v = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
-        in_sin_v = ggml_new_tensor_4d(gctx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
+        in_cos_v = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
+        in_sin_v = ggml_new_tensor_4d(ictx, GGML_TYPE_F32, dh_l, nh, Nagg, S);
         ggml_set_input(in_cos_v);
         ggml_set_input(in_sin_v);
-        in_pos_embed = ggml_new_tensor_3d(gctx, GGML_TYPE_F32, C, 1 + P, 1);
+        in_pos_embed = ggml_new_tensor_3d(ictx, GGML_TYPE_F32, C, 1 + P, 1);
         ggml_set_input(in_pos_embed);
 
         // ---- encoder + decoder: identical to pi3 (register concat, 36
@@ -4087,11 +4154,15 @@ struct VGGTRuntime::Pi3XImpl final : VGGTRuntime::Pi3Impl {
             ggml_build_forward_expand(graph, dbg_nodes[i]);
 #endif
         galloc = ggml_gallocr_new(ggml_backend_get_default_buffer_type(be.handle));
+        // give the static inputs their own buffer BEFORE the graph pool is
+        // allocated, so gallocr skips them (they must survive across runs)
+        ibuf = ggml_backend_alloc_ctx_tensors(ictx, be.handle);
+        if (!ibuf) return false;
         if (!ggml_gallocr_alloc_graph(galloc, graph)) {
             log_error("pi3x: graph allocation failed");
             return false;
         }
-        log_info("pi3x: graph allocation done, uploading static inputs");
+log_info("pi3x: graph allocation done, uploading static inputs");
         ggml_backend_tensor_set(in_mean, m->meta.img_mean, 0, 3 * sizeof(float));
         ggml_backend_tensor_set(in_std, m->meta.img_std, 0, 3 * sizeof(float));
         ggml_backend_tensor_set(in_pos_embed, host_pos_embed.data(), 0,
@@ -4224,7 +4295,7 @@ std::unique_ptr<IGraphBuilder> create_builder(const std::string& arch) {
 }
 
 VGGTRuntime::VGGTRuntime(const GGUFModel& model, Backend backend, int n_views,
-                         int height, int width)
+                         int height, int width, const RuntimeOptions& opts)
     : s_(n_views), h_(height), w_(width) {
     impl_.reset(dynamic_cast<Impl*>(
         create_builder(model.meta.architecture).release()));
@@ -4236,7 +4307,7 @@ VGGTRuntime::VGGTRuntime(const GGUFModel& model, Backend backend, int n_views,
                   model.meta.architecture.c_str());
         return;
     }
-    if (!impl_->init(model, backend, n_views, height, width)) {
+    if (!impl_->init(model, backend, n_views, height, width, opts)) {
         impl_.reset();
     }
 }

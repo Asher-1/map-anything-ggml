@@ -25,6 +25,19 @@
 
 namespace mapggml {
 
+// Explicit runtime switches. Everything that used to travel through
+// environment variables (MAPGGML_DUMP_STAGE / MAPGGML_DOT) goes through
+// this struct, so behavior is reproducible from the call site alone.
+struct RuntimeOptions {
+    // Stage-dump directory (only effective in builds compiled with
+    // MAPGGML_ENABLE_DUMP=ON): after each run() the selected intermediate
+    // tensors are written as <dir>/*.bin for parity debugging. "" = off.
+    std::string dump_dir;
+    // Optional path for ggml_graph_dump_dot (graph-shape debugging aid).
+    // "" = off.
+    std::string dot_path;
+};
+
 struct VGGTOutputs {
     // pose_enc {S, 9} f32: absT 3 + quaR 4 + FoV 2 (fov passed through
     // relu(x) + 0.01, translation/quaternion linear)
@@ -70,7 +83,8 @@ class VGGTRuntime {
    public:
     // Does not take ownership of the GGUFModel; it must outlive the runtime.
     VGGTRuntime(const GGUFModel& model, Backend backend, int n_views,
-                int height, int width);
+                int height, int width,
+                const RuntimeOptions& opts = RuntimeOptions());
     ~VGGTRuntime();
 
     // images_f32: S*3*H*W floats in [0,1], torch (S,3,H,W) order.

@@ -51,12 +51,12 @@ void check(bool ok, const char* name, const std::string& detail) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    const char* m_env = std::getenv("MAPGGML_TEST_GGUF");
-    const char* r_env = std::getenv("MAPGGML_TEST_REF");
-    std::string model_path = argc > 1 ? argv[1] : (m_env ? m_env : "");
-    std::string ref_path = argc > 2 ? argv[2] : (r_env ? r_env : "");
+    // explicit argv contract: test_s2_independence <model.gguf> <ref.npz>
+    std::string model_path = argc > 1 ? argv[1] : "";
+    std::string ref_path = argc > 2 ? argv[2] : "";
     if (model_path.empty()) {
-        std::printf("SKIP: no GGUF model (pass argv[1] or MAPGGML_TEST_GGUF)\n");
+        std::printf("SKIP: no GGUF model\n"
+                    "usage: test_s2_independence <model.gguf> [ref.npz]\n");
         return 77;
     }
 

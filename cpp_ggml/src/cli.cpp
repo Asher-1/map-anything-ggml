@@ -1,18 +1,23 @@
-// vggt-cli: run VGGT-Omega inference from GGUF weights.
+// vggt-cli: run any of the six registered models from GGUF weights.
 //
-// Parity path (bit-exact preprocessing):
-//   vggt-cli --model m.gguf --bin frames.bin --H 294 --W 518 --S 3 \
-//            --out-prefix /tmp/vggt
-//   (frames.bin = S*3*H*W float32 in [0,1], torch (S,3,H,W) order, produced
-//    by the official Python loader)
-//
-// Image path (official "balanced" preprocessing; H/W come out as
-// patch-multiples close to image-resolution^2 tokens):
-//   vggt-cli --model m.gguf --images a.jpg b.jpg --image-size 512 \
-//            --out-prefix /tmp/vggt
+// Input paths (unified funnel — exactly one source; see load_frames):
+//   --bin frames.bin --H h --W w --S n
+//       raw f32 frames in [0,1], torch (S,3,H,W) order (the bit-exact
+//       parity path, produced by the official Python loader)
+//   --bin-u8 frames_u8.bin --H h --W w --S n
+//       raw uint8 frames in [0,255] (same CHW order); a quarter of the
+//       f32 payload for pipelines that already hold 8-bit captures
+//   --images a.jpg [b.jpg ...] [--image-size 512]
+//       [--resize-mode balanced|max_size]
+//       image files (stb decode) or a directory (expanded to its image
+//       files in sorted order — video frame-sequence dumps); the official
+//       balanced preprocessing produces patch-multiple shapes
 //
 // --timing prints a JSON phase breakdown to stderr (load / build /
 // stage1..3 / total) and mirrors it into <prefix>.meta.json.
+// --dump-dir / --dot feed RuntimeOptions (stage dumps are effective only
+// in MAPGGML_ENABLE_DUMP=ON builds; the graph .dot export works in all
+// builds).
 //
 // Outputs (three contract families, dispatched by the GGUF architecture —
 // see FEATURE_PARITY_AUDIT.md for the family tree):
@@ -36,9 +41,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <numeric>
 #include <string>
@@ -54,16 +61,132 @@ double steady_ms() {
         .count();
 }
 
+// The one tensor the graph consumes: (S,3,H,W) f32 in [0,1], C order.
+struct Frames {
+    std::vector<float> data;
+    int S = 0, H = 0, W = 0;
+};
+
+// Expand --images entries: a directory contributes its image files in
+// sorted order (video frame-sequence dumps); anything else passes through
+// as a single path.
+bool expand_image_paths(const std::vector<std::string>& in,
+                        std::vector<std::string>& out) {
+    namespace fs = std::filesystem;
+    static const char* kExts[] = {".jpg", ".jpeg", ".png", ".bmp",
+                                  ".webp", ".tga", ".pgm", ".ppm"};
+    for (const auto& p : in) {
+        std::error_code ec;
+        if (!fs::is_directory(p, ec)) {
+            out.push_back(p);
+            continue;
+        }
+        std::vector<std::string> hits;
+        for (const auto& e : fs::directory_iterator(p, ec)) {
+            if (!e.is_regular_file()) continue;
+            std::string ext = e.path().extension().string();
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            for (const char* k : kExts) {
+                if (ext == k) {
+                    hits.push_back(e.path().string());
+                    break;
+                }
+            }
+        }
+        if (hits.empty()) {
+            log_error("no image files in directory: %s", p.c_str());
+            return false;
+        }
+        std::sort(hits.begin(), hits.end());
+        out.insert(out.end(), hits.begin(), hits.end());
+    }
+    return true;
+}
+
+// Unified input funnel: every supported input source is normalized here,
+// so nothing below this point knows where the frames came from. Exactly
+// one source must be given. The checkpoint's own mean/std is applied as
+// the first graph op inside the runtime (see Impl::init), NOT here —
+// [0,1] is the funnel contract.
+bool load_frames(const std::string& bin_f32, const std::string& bin_u8,
+                 const std::vector<std::string>& image_entries, int H, int W,
+                 int S_in, int image_size, int patch_size,
+                 const std::string& resize_mode, Frames& fr) {
+    const int n_sources = !bin_f32.empty() + !bin_u8.empty() +
+                          !image_entries.empty();
+    if (n_sources == 0) {
+        log_error("no input: use --bin, --bin-u8 or --images");
+        return false;
+    }
+    if (n_sources > 1) {
+        log_error("--bin/--bin-u8/--images are mutually exclusive");
+        return false;
+    }
+
+    if (!bin_f32.empty()) {
+        if (H <= 0 || W <= 0 || S_in <= 0) {
+            log_error("--bin requires --H/--W/--S");
+            return false;
+        }
+        std::vector<uint8_t> raw = read_file_bytes(bin_f32);
+        const size_t want = (size_t)S_in * 3 * H * W * sizeof(float);
+        if (raw.size() != want) {
+            log_error("bin size %zu != expected %zu", raw.size(), want);
+            return false;
+        }
+        fr.S = S_in;
+        fr.H = H;
+        fr.W = W;
+        fr.data.resize(want / sizeof(float));
+        memcpy(fr.data.data(), raw.data(), want);
+        return true;
+    }
+
+    if (!bin_u8.empty()) {
+        if (H <= 0 || W <= 0 || S_in <= 0) {
+            log_error("--bin-u8 requires --H/--W/--S");
+            return false;
+        }
+        std::vector<uint8_t> raw = read_file_bytes(bin_u8);
+        const size_t n = (size_t)S_in * 3 * H * W;
+        if (raw.size() != n) {
+            log_error("bin-u8 size %zu != expected %zu", raw.size(), n);
+            return false;
+        }
+        fr.S = S_in;
+        fr.H = H;
+        fr.W = W;
+        fr.data.resize(n);
+        for (size_t i = 0; i < n; i++)
+            fr.data[i] = (float)raw[i] / 255.0f;  // [0,255] -> [0,1]
+        return true;
+    }
+
+    std::vector<std::string> paths;
+    if (!expand_image_paths(image_entries, paths)) return false;
+    // official load_and_preprocess_images equivalent; the patch size comes
+    // from the GGUF so any checkpoint works
+    if (!load_images_official(paths, image_size, patch_size, fr.data, fr.H,
+                              fr.W, resize_mode))
+        return false;
+    fr.S = (int)paths.size();
+    log_info("preprocessed %d image(s) -> %dx%d (%s, res=%d, patch=%d)",
+             fr.S, fr.W, fr.H, resize_mode.c_str(), image_size, patch_size);
+    return true;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    std::string model_path, bin_path, out_prefix = "/tmp/vggt";
+    std::string model_path, bin_path, bin_u8_path, out_prefix = "/tmp/vggt";
     std::vector<std::string> images;
     int H = 0, W = 0, S = 0;
     int image_size = 512;  // official demo default (per-checkpoint resolution)
     std::string resize_mode = "balanced";  // official default ("balanced"|"max_size")
     int repeats = 1, warmup = 0, cpu_threads = 0;
     bool timing = false;
+    RuntimeOptions ropts;
 
     for (int i = 1; i < argc; i++) {
         const std::string a = argv[i];
@@ -76,13 +199,16 @@ int main(int argc, char** argv) {
         };
         if (a == "--model") model_path = next("--model");
         else if (a == "--bin") bin_path = next("--bin");
-        else if (a == "--images") { images.push_back(next("--images")); S = (int)images.size(); }
+        else if (a == "--bin-u8") bin_u8_path = next("--bin-u8");
+        else if (a == "--images") { images.push_back(next("--images")); }
         else if (a == "--H") H = std::stoi(next("--H"));
         else if (a == "--W") W = std::stoi(next("--W"));
         else if (a == "--S") S = std::stoi(next("--S"));
         else if (a == "--image-size") image_size = std::stoi(next("--image-size"));
         else if (a == "--resize-mode") resize_mode = next("--resize-mode");
         else if (a == "--out-prefix") out_prefix = next("--out-prefix");
+        else if (a == "--dump-dir") ropts.dump_dir = next("--dump-dir");
+        else if (a == "--dot") ropts.dot_path = next("--dot");
         else if (a == "--timing") timing = true;
         else if (a == "--threads") cpu_threads = std::stoi(next("--threads"));
         else if (a == "--repeats") repeats = std::stoi(next("--repeats"));
@@ -90,20 +216,23 @@ int main(int argc, char** argv) {
         else if (a == "--help" || a == "-h") {
             fprintf(stderr,
                     "usage: vggt-cli --model m.gguf (--bin frames.bin --H h "
-                    "--W w --S n | --images a.jpg [b.jpg ...])\n"
+                    "--W w --S n | --bin-u8 frames_u8.bin --H h --W w --S n |\n"
+                    "                --images a.jpg [b.jpg ... | dir/])\n"
                     "                [--image-size 512] [--resize-mode balanced|max_size] "
                     "[--out-prefix p] "
-                    "[--timing] [--warmup n] [--repeats n] [--threads n]\n");
+                    "[--timing] [--warmup n] [--repeats n] [--threads n]\n"
+                    "                [--dump-dir d] [--dot graph.dot]\n");
             return 0;
         }
         else { log_error("unknown arg: %s", a.c_str()); return 1; }
     }
-    if (model_path.empty() || (bin_path.empty() && images.empty())) {
+    if (model_path.empty()) {
         fprintf(stderr,
                 "usage: vggt-cli --model m.gguf (--bin frames.bin --H h --W w "
-                "--S n | --images a.jpg [b.jpg ...]) [--image-size 512] "
-                "[--resize-mode balanced|max_size] [--out-prefix p] [--timing] "
-                "[--warmup n] [--repeats n]\n");
+                "--S n | --bin-u8 f.bin --H h --W w --S n | --images a.jpg "
+                "[...|dir/]) [--image-size 512] [--resize-mode "
+                "balanced|max_size] [--out-prefix p] [--timing] [--warmup n] "
+                "[--repeats n] [--dump-dir d] [--dot g.dot]\n");
         return 1;
     }
 
@@ -115,47 +244,33 @@ int main(int argc, char** argv) {
     if (!model) return 1;
     const double t1 = steady_ms();
 
-    std::vector<float> imgs;
-    if (!bin_path.empty()) {
-        if (H <= 0 || W <= 0 || S <= 0) {
-            log_error("--bin requires --H/--W/--S");
-            return 1;
-        }
-        std::vector<uint8_t> raw = read_file_bytes(bin_path);
-        const size_t want = (size_t)S * 3 * H * W * sizeof(float);
-        if (raw.size() != want) {
-            log_error("bin size %zu != expected %zu", raw.size(), want);
-            return 1;
-        }
-        imgs.resize(want / sizeof(float));
-        memcpy(imgs.data(), raw.data(), want);
-    } else {
-        // official load_and_preprocess_images(mode="balanced") equivalent;
-        // the patch size comes from the GGUF so any checkpoint works
-        if (!load_images_official(images, image_size,
-                                  model->meta.patch_size, imgs, H, W,
-                                  resize_mode)) {
-            return 1;
-        }
-        S = (int)images.size();
-        log_info("preprocessed %d image(s) -> %dx%d (balanced, res=%d, patch=%d)",
-                 S, W, H, image_size, model->meta.patch_size);
-    }
+    // unified input funnel: whatever the source, frames.data holds
+    // (S,3,H,W) f32 in [0,1] from here on
+    Frames frames;
+    if (!load_frames(bin_path, bin_u8_path, images, H, W, S, image_size,
+                     model->meta.patch_size, resize_mode, frames))
+        return 1;
+    S = frames.S;
+    H = frames.H;
+    W = frames.W;
     const double t2 = steady_ms();
 
     VGGTOutputs out;
-    VGGTRuntime rt(*model, be, S, H, W);
+    if (!ropts.dump_dir.empty())
+        log_info("dump-dir: %s (stage dumps are effective only in "
+                 "MAPGGML_ENABLE_DUMP=ON builds)", ropts.dump_dir.c_str());
+    VGGTRuntime rt(*model, be, S, H, W, ropts);
     // Warmup iterations let ggml's CUDA graph replay engage: the CUDA backend
     // only starts capturing after two consecutive computes with unchanged
     // graph properties, and a fresh process would otherwise never reach
     // steady state (single-shot runs pay ~60 ms of kernel-launch overhead).
     // Timed repeats then report per-iteration latency from this same process.
     for (int i = 0; i < warmup; i++) {
-        if (!rt.run(imgs.data(), out)) return 1;
+        if (!rt.run(frames.data.data(), out)) return 1;
     }
     std::vector<double> iter_ms, iter_s1, iter_s2;
     for (int i = 0; i < repeats; i++) {
-        if (!rt.run(imgs.data(), out)) return 1;
+        if (!rt.run(frames.data.data(), out)) return 1;
         iter_ms.push_back(out.timing_ms["inference_total"]);
         if (out.timing_ms.count("stage1_backbone"))
             iter_s1.push_back(out.timing_ms["stage1_backbone"]);
