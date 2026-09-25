@@ -6,6 +6,8 @@
 // --images only for smoke tests.
 #pragma once
 
+#include "mapggml/capi.h"
+
 #include <string>
 #include <vector>
 
@@ -24,5 +26,14 @@ bool load_images_official(const std::vector<std::string>& paths,
                           int image_resolution, int patch_size,
                           std::vector<float>& out, int& height, int& width,
                           const std::string& mode = "balanced");
+
+// In-memory variant with the same official preprocessing: views are
+// borrowed for the duration of the call; RGB8/RGBA8/GRAY8/BGR8/BGRA8 are
+// converted to RGB internally and row_stride_bytes is honored. Feeds the
+// host-application (ACloudViewer AICore) integration path.
+bool load_images_official_views(const mapggml_image_view* views, int n,
+                                int image_resolution, int patch_size,
+                                std::vector<float>& out, int& height,
+                                int& width, const std::string& mode);
 
 }  // namespace mapggml

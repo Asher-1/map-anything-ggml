@@ -181,7 +181,6 @@ struct VGGTRuntime::Impl : IGraphBuilder {
     ggml_tensor* out_patches = nullptr;    // backbone output (dump point)
     ggml_tensor* out_last = nullptr;       // cached layer 23 output
     std::vector<ggml_tensor*> inter_nodes; // aggregator cached outputs
-    std::vector<float> stage_imgs;         // per-run input staging buffer
     ggml_tensor* in_images = nullptr;  // {W, H, 3, S}
     ggml_tensor* in_mean = nullptr;    // {1,1,3,1}
     ggml_tensor* in_std = nullptr;     // {1,1,3,1}
@@ -1123,8 +1122,7 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         // uploaded once at build time. imgs goes straight to the backend:
         // normalization is the graph's first op (GGUF mean/std), so no
         // host-side intermediate buffer is needed.
-        stage_imgs.assign(imgs, imgs + (size_t)S * 3 * H * W);
-        ggml_backend_tensor_set(in_images, stage_imgs.data(), 0,
+        ggml_backend_tensor_set(in_images, imgs, 0,
                                 (size_t)S * 3 * H * W * sizeof(float));
         const auto t1 = now();
         ggml_backend_graph_compute(be.handle, graph);
@@ -2151,8 +2149,7 @@ struct VGGTRuntime::VGGTImpl : VGGTRuntime::Impl {
         };
         out.timing_ms["build_graphs"] = build_ms;
         const auto t0 = now();
-        stage_imgs.assign(imgs, imgs + (size_t)S * 3 * H * W);
-        ggml_backend_tensor_set(in_images, stage_imgs.data(), 0,
+        ggml_backend_tensor_set(in_images, imgs, 0,
                                 (size_t)S * 3 * H * W * sizeof(float));
         ggml_backend_graph_compute(be.handle, graph);
         const auto t2 = now();
@@ -2623,8 +2620,7 @@ log_info("pi3: graph allocation done, uploading static inputs");
         };
         out.timing_ms["build_graphs"] = build_ms;
         const auto t0 = now();
-        stage_imgs.assign(imgs, imgs + (size_t)S * 3 * H * W);
-        ggml_backend_tensor_set(in_images, stage_imgs.data(), 0,
+        ggml_backend_tensor_set(in_images, imgs, 0,
                                 (size_t)S * 3 * H * W * sizeof(float));
         ggml_backend_graph_compute(be.handle, graph);
         const auto t2 = now();
@@ -3071,8 +3067,7 @@ log_info("mapanything: graph allocation done, uploading static inputs");
     bool run(const float* imgs, VGGTOutputs& out) override {
         if (!graph) return false;
         const auto t0 = std::chrono::steady_clock::now();
-        stage_imgs.assign(imgs, imgs + (size_t)S * 3 * H * W);
-        ggml_backend_tensor_set(in_images, stage_imgs.data(), 0,
+        ggml_backend_tensor_set(in_images, imgs, 0,
                                 (size_t)S * 3 * H * W * sizeof(float));
         ggml_backend_graph_compute(be.handle, graph);
         out.timing_ms["inference_total"] =
@@ -3642,8 +3637,7 @@ log_info("dust3r: graph allocation done, uploading static inputs");
     bool run(const float* imgs, VGGTOutputs& out) override {
         if (!graph) return false;
         const auto t0 = std::chrono::steady_clock::now();
-        stage_imgs.assign(imgs, imgs + (size_t)S * 3 * H * W);
-        ggml_backend_tensor_set(in_images, stage_imgs.data(), 0,
+        ggml_backend_tensor_set(in_images, imgs, 0,
                                 (size_t)S * 3 * H * W * sizeof(float));
         ggml_backend_graph_compute(be.handle, graph);
         out.timing_ms["inference_total"] =
@@ -4188,8 +4182,7 @@ log_info("pi3x: graph allocation done, uploading static inputs");
 
     bool run(const float* imgs, VGGTOutputs& out) override {
         if (!graph) return false;
-        stage_imgs.assign(imgs, imgs + (size_t)S * 3 * H * W);
-        ggml_backend_tensor_set(in_images, stage_imgs.data(), 0,
+        ggml_backend_tensor_set(in_images, imgs, 0,
                                 (size_t)S * 3 * H * W * sizeof(float));
         const auto t0 = std::chrono::steady_clock::now();
         ggml_backend_graph_compute(be.handle, graph);

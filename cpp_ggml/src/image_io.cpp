@@ -1,6 +1,7 @@
 #include "image_io.hpp"
 
 #include "common.hpp"
+#include "mapggml/capi.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -63,20 +64,14 @@ void crop_to_supported_aspect(ImageBuf& im) {
 
 }  // namespace
 
-// Official load_and_preprocess_images(mode="balanced") equivalent:
-//   1) center-crop extreme aspect ratios into [0.5, 2.0]
-//   2) balanced target shape: token budget (res/patch)^2 split by aspect
-//      ratio, both sides rounded to patch multiples (round-half-even)
-//   3) BICUBIC resize (PIL == Catmull-Rom, Keys a=-0.5)
-//   4) pad differing shapes to the common max size with white (1.0)
-bool load_images_official(const std::vector<std::string>& paths,
-                          int image_resolution, int patch_size,
-                          std::vector<float>& out, int& height, int& width,
-                          const std::string& mode) {
-    if (paths.empty()) {
-        log_error("no input images");
-        return false;
-    }
+// Official load_and_preprocess_images(mode="balanced"|"max_size") core,
+// shared by the file-path and in-memory entry points: input buffers are
+// already RGB8 row-major.
+static bool preprocess_official(std::vector<ImageBuf>& ims,
+                                int image_resolution, int patch_size,
+                                const std::string& mode,
+                                std::vector<float>& out, int& height,
+                                int& width) {
     if (image_resolution <= 0 || image_resolution % patch_size != 0) {
         log_error("image_resolution (%d) must be positive and divisible by "
                   "patch_size (%d)",
@@ -99,18 +94,7 @@ bool load_images_official(const std::vector<std::string>& paths,
     };
     std::vector<Plane> planes;
 
-    for (const auto& path : paths) {
-        int w = 0, h = 0, c = 0;
-        unsigned char* data = stbi_load(path.c_str(), &w, &h, &c, 3);
-        if (!data) {
-            log_error("stbi_load failed: %s", path.c_str());
-            return false;
-        }
-        ImageBuf im;
-        im.w = w;
-        im.h = h;
-        im.px.assign(data, data + (size_t)w * h * 3);
-        stbi_image_free(data);
+    for (ImageBuf& im : ims) {
         crop_to_supported_aspect(im);
 
         const double ar = (double)im.h / (double)std::max(im.w, 1);
@@ -196,6 +180,122 @@ bool load_images_official(const std::vector<std::string>& paths,
     width = max_w;
     // (h, w, c) per image matches (H, W, C) = ggml {W, H, 3, S} rows.
     return true;
+}
+
+// Convert one borrowed view (RGB8/RGBA8/GRAY8/BGR8/BGRA8, arbitrary stride)
+// into a packed RGB8 ImageBuf.
+static bool view_to_rgb(const mapggml_image_view& v, ImageBuf& im) {
+    if (!v.data || v.width <= 0 || v.height <= 0) {
+        log_error("image view has no data or non-positive dimensions");
+        return false;
+    }
+    im.w = v.width;
+    im.h = v.height;
+    im.px.resize((size_t)v.width * v.height * 3);
+    const int w = v.width, h = v.height;
+    switch (v.format) {
+        case MAPGGML_IMAGE_RGB8:
+            for (int y = 0; y < h; y++)
+                memcpy(&im.px[(size_t)y * w * 3],
+                       v.data + (size_t)y * v.row_stride_bytes,
+                       (size_t)w * 3);
+            break;
+        case MAPGGML_IMAGE_RGBA8:
+            for (int y = 0; y < h; y++) {
+                const uint8_t* row =
+                    v.data + (size_t)y * v.row_stride_bytes;
+                for (int x = 0; x < w; x++) {
+                    im.px[((size_t)y * w + x) * 3 + 0] = row[x * 4 + 0];
+                    im.px[((size_t)y * w + x) * 3 + 1] = row[x * 4 + 1];
+                    im.px[((size_t)y * w + x) * 3 + 2] = row[x * 4 + 2];
+                }
+            }
+            break;
+        case MAPGGML_IMAGE_BGR8:
+            for (int y = 0; y < h; y++) {
+                const uint8_t* row =
+                    v.data + (size_t)y * v.row_stride_bytes;
+                for (int x = 0; x < w; x++) {
+                    im.px[((size_t)y * w + x) * 3 + 0] = row[x * 3 + 2];
+                    im.px[((size_t)y * w + x) * 3 + 1] = row[x * 3 + 1];
+                    im.px[((size_t)y * w + x) * 3 + 2] = row[x * 3 + 0];
+                }
+            }
+            break;
+        case MAPGGML_IMAGE_BGRA8:
+            for (int y = 0; y < h; y++) {
+                const uint8_t* row =
+                    v.data + (size_t)y * v.row_stride_bytes;
+                for (int x = 0; x < w; x++) {
+                    im.px[((size_t)y * w + x) * 3 + 0] = row[x * 4 + 2];
+                    im.px[((size_t)y * w + x) * 3 + 1] = row[x * 4 + 1];
+                    im.px[((size_t)y * w + x) * 3 + 2] = row[x * 4 + 0];
+                }
+            }
+            break;
+        case MAPGGML_IMAGE_GRAY8:
+            for (int y = 0; y < h; y++) {
+                const uint8_t* row =
+                    v.data + (size_t)y * v.row_stride_bytes;
+                for (int x = 0; x < w; x++) {
+                    im.px[((size_t)y * w + x) * 3 + 0] = row[x];
+                    im.px[((size_t)y * w + x) * 3 + 1] = row[x];
+                    im.px[((size_t)y * w + x) * 3 + 2] = row[x];
+                }
+            }
+            break;
+        default:
+            log_error("unknown image format %d", (int)v.format);
+            return false;
+    }
+    return true;
+}
+
+bool load_images_official(const std::vector<std::string>& paths,
+                          int image_resolution, int patch_size,
+                          std::vector<float>& out, int& height, int& width,
+                          const std::string& mode) {
+    if (paths.empty()) {
+        log_error("no input images");
+        return false;
+    }
+    std::vector<ImageBuf> ims;
+    ims.reserve(paths.size());
+    for (const auto& path : paths) {
+        int w = 0, h = 0, c = 0;
+        unsigned char* data = stbi_load(path.c_str(), &w, &h, &c, 3);
+        if (!data) {
+            log_error("stbi_load failed: %s", path.c_str());
+            return false;
+        }
+        ImageBuf im;
+        im.w = w;
+        im.h = h;
+        im.px.assign(data, data + (size_t)w * h * 3);
+        stbi_image_free(data);
+        ims.push_back(std::move(im));
+    }
+    return preprocess_official(ims, image_resolution, patch_size, mode, out,
+                               height, width);
+}
+
+bool load_images_official_views(const mapggml_image_view* views, int n,
+                                int image_resolution, int patch_size,
+                                std::vector<float>& out, int& height,
+                                int& width, const std::string& mode) {
+    if (!views || n <= 0) {
+        log_error("no input image views");
+        return false;
+    }
+    std::vector<ImageBuf> ims;
+    ims.reserve((size_t)n);
+    for (int i = 0; i < n; i++) {
+        ImageBuf im;
+        if (!view_to_rgb(views[i], im)) return false;
+        ims.push_back(std::move(im));
+    }
+    return preprocess_official(ims, image_resolution, patch_size, mode, out,
+                               height, width);
 }
 
 }  // namespace mapggml

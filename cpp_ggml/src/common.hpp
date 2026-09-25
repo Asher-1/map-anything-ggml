@@ -28,6 +28,7 @@ inline size_t nbytes_of(enum ggml_type type, const int64_t ne[4]) {
 
 // Simple stderr logging with a mapggml prefix.
 void log_info(const char* fmt, ...);
+void log_warn(const char* fmt, ...);
 void log_error(const char* fmt, ...);
 
 // Load a whole binary file (raw f32 image buffers for the CLI).

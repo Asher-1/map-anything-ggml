@@ -186,3 +186,49 @@ identical final outputs, proving this is not a quantization issue.
   (ten-step checklist, iron rules, pitfalls);
 - [benchmarks/RESULTS.md](benchmarks/RESULTS.md) — historical optimization
   records.
+
+## C API for host-application integration (ACloudViewer AICore)
+
+`include/mapggml/capi.h` is the integration surface: a pure C ABI that
+mirrors the AICore plugin contract (see ACloudViewer's
+`.agents/skills/acloudviewer-aicore-plugin/SKILL.md`) — opaque contexts,
+explicit options handles, typed results with release functions,
+thread-local `last_error`, borrowed stride-aware image views, and no
+environment variables. One context serves all six architectures (the GGUF
+`general.architecture` key dispatches internally).
+
+```c
+#include "mapggml/capi.h"
+
+mapggml_options* o = mapggml_options_new();
+mapggml_options_set_device(o, "auto");          // cpu|cuda|vulkan|metal|auto
+void* ctx = mapggml_load("models/gguf/mapanything-f16.gguf", o);
+mapggml_options_free(o);
+
+mapggml_result r;
+mapggml_run_images(ctx, views, n_views, &r);    // borrowed RGB8/RGBA8/... views
+// or the bit-exact parity path:
+// mapggml_run_frames(ctx, frames_f32, n, h, w, &r);
+// r.pose / r.depth / r.local_points / r.points / r.mask / r.scale —
+// family-specific fields are documented in capi.h; free with
+mapggml_result_free(&r);
+mapggml_ctx_free(ctx);
+```
+
+Integration notes:
+
+- `mapggml_image_view` is layout-compatible with AICore's
+  `aicore_image_view` (field-by-field conversion in the host adapter).
+- `mapggml_patch_size` / `mapggml_default_image_size` let the host pick a
+  patch-aligned input size; the checkpoint's own mean/std normalization is
+  the graph's first op, so callers feed [0,1] pixels.
+- Result fields are architecture-dependent (dust3r has no pose; the text
+  embedding only exists on the omega text variant) — branch on
+  `r.architecture`; every field's semantics is documented in the header.
+- Contexts are not thread-safe: serialize `run_*` calls per context.
+- A resolution change rebuilds the runtime (weights re-stage); keeping the
+  input geometry across calls reuses everything.
+
+Contract test: `build-cpu/bin/test_capi <model.gguf>` (options NULL-safety,
+device enumeration, load-error path, frames-vs-image-view bit equality at
+the nominal resolution, and multi-run bit-identical stability).

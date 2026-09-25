@@ -121,6 +121,7 @@ set(MAPGGML_SOURCES
     src/gguf_loader.cpp
     src/backend.cpp
     src/vggt_graph.cpp
+    src/capi.cpp
 )
 
 if(MAP_GGML_SHARED)
@@ -152,6 +153,7 @@ endif()
 
 target_include_directories(mapggml
     PUBLIC  ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(mapggml
     PUBLIC  ggml
@@ -175,5 +177,7 @@ endif()
 if(MAP_GGML_BUILD_TESTS)
     add_executable(test_s2_independence tests/test_s2_independence.cpp)
     target_link_libraries(test_s2_independence PRIVATE mapggml)
+    add_executable(test_capi tests/test_capi.cpp)
+    target_link_libraries(test_capi PRIVATE mapggml)
     # regression runner lives in tests/test_matrix.py (no build step needed)
 endif()

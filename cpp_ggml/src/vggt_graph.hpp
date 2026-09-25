@@ -91,6 +91,10 @@ class VGGTRuntime {
     // Returns false and logs on failure.
     bool run(const float* images_f32, VGGTOutputs& out);
 
+    // False when construction failed (unknown architecture / init error);
+    // run() would return false as well.
+    bool valid() const { return impl_ != nullptr; }
+
     int n_views() const { return s_; }
     int height() const { return h_; }
     int width() const { return w_; }
