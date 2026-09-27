@@ -8,7 +8,7 @@
 #   4. optional stage-dump comparison (--dump-dir must match in 1+2)
 #
 # Usage:
-#   scripts/e2e_gate.sh [--ckpt models/pytorch/vggt_omega_1b_512.pt] \
+#   scripts/e2e_gate.sh [--ckpt models/pytorch/vggt-omega/vggt_omega_1b_512.pt] \
 #                       [--gguf models/gguf/vggt-omega-1b-512-f16.gguf] \
 #                       [--quant f16] [--frames /tmp/vggt_smoke/frames.bin] \
 #                       [--H 512 --W 512 --S 2] [--stages /tmp/vggt_stages] \
@@ -20,7 +20,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."   # cpp_ggml root
 
-CKPT="models/pytorch/vggt_omega_1b_512.pt"
+CKPT="models/pytorch/vggt-omega/vggt_omega_1b_512.pt"
 GGUF=""
 QUANT="f16"
 FRAMES="/tmp/vggt_smoke/frames.bin"

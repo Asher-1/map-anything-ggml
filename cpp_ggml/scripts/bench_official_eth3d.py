@@ -510,7 +510,7 @@ def main() -> None:
     ap.add_argument("--cli", default=str(CPP / "build-cuda/bin/vggt-cli"))
     ap.add_argument("--gguf", default=str(CPP / "models/gguf/"
                                           "vggt-omega-1b-512-f16.gguf"))
-    ap.add_argument("--ckpt", default=str(CPP / "models/pytorch/"
+    ap.add_argument("--ckpt", default=str(CPP / "models/pytorch/vggt-omega/"
                                           "vggt_omega_1b_512.pt"))
     ap.add_argument("--arch", default="vggt_omega",
                     choices=["vggt_omega", "vggt", "pi3", "pi3x",

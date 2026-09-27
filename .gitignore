@@ -183,3 +183,4 @@ cpp_ggml/models/gguf/
 *.pt
 *.gguf
 *.json
+data/

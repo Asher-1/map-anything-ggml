@@ -1,7 +1,12 @@
 # benchmarks — charts, tables and the cross-model comparison
 
+> All figures (raw links) and all referenced documents (blob links) use
+> **absolute GitHub URLs** (branch `main`), so this index renders anywhere
+> — no checkout needed:
+> `https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/...`
+
 Every model ships the full five-piece verification suite (see
-[../FEATURE_PARITY_AUDIT.md](../FEATURE_PARITY_AUDIT.md)): the
+[../FEATURE_PARITY_AUDIT.md](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/FEATURE_PARITY_AUDIT.md)): the
 quantization x backend gate matrix, the official-protocol ETH3D bench
 (two-sided), the real-scene reconstruction comparison, latency benchmarks,
 and an illustrated report. This README is the visual index.
@@ -35,12 +40,12 @@ are < 1% everywhere — the full two-sided tables are in `results/<model>/`):
 
 | Model | Latency (backends x quants) | Gate heatmap | Quant Pareto | Parity scatter | Recon |
 |---|---|---|---|---|---|
-| [vggt-omega](charts/vggt-omega/omega_report.md) | ![lat](charts/vggt-omega/e2e_latency_bar.png) | ![hm](charts/vggt-omega/pose_error_heatmap.png) | ![qp](charts/vggt-omega/quant_pareto_3d.png) | ![ps](charts/vggt-omega/parity_scatter.png) | ![rc](charts/vggt-omega/recon_depth_comparison.png) |
-| [vggt-1b](charts/vggt-1b/vggt1b_report.md) | ![lat](charts/vggt-1b/e2e_latency_bar.png) | ![hm](charts/vggt-1b/pose_error_heatmap.png) | ![qp](charts/vggt-1b/quant_pareto_3d.png) | ![ps](charts/vggt-1b/parity_scatter.png) | ![rc](charts/vggt-1b/recon_depth_comparison.png) |
-| [pi3](charts/pi3/pi3_report.md) | ![lat](charts/pi3/e2e_latency_bar.png) | ![hm](charts/pi3/pose_error_heatmap.png) | ![qp](charts/pi3/quant_pareto_3d.png) | ![ps](charts/pi3/parity_scatter.png) | ![rc](charts/pi3/recon_depth_comparison.png) |
-| [pi3x](charts/pi3x/pi3x_report.md) | ![lat](charts/pi3x/e2e_latency_bar.png) | ![hm](charts/pi3x/pose_error_heatmap.png) | ![qp](charts/pi3x/quant_pareto_3d.png) | ![ps](charts/pi3x/parity_scatter.png) | ![rc](charts/pi3x/recon_depth_comparison.png) |
-| [mapanything](charts/mapanything/mapanything_report.md) | ![lat](charts/mapanything/e2e_latency_bar.png) | ![hm](charts/mapanything/pose_error_heatmap.png) | ![qp](charts/mapanything/quant_pareto_3d.png) | ![ps](charts/mapanything/parity_scatter.png) | ![rc](charts/mapanything/recon_depth_comparison.png) |
-| [dust3r](charts/dust3r/dust3r_report.md) | ![lat](charts/dust3r/e2e_latency_bar.png) | ![hm](charts/dust3r/pose_error_heatmap.png) | ![qp](charts/dust3r/quant_pareto_3d.png) | ![ps](charts/dust3r/parity_scatter.png) | ![rc](charts/dust3r/recon_depth_comparison.png) |
+| [vggt-omega](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/charts/vggt-omega/omega_report.md) | ![lat](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/e2e_latency_bar.png) | ![hm](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/pose_error_heatmap.png) | ![qp](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/quant_pareto_3d.png) | ![ps](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/parity_scatter.png) | ![rc](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/recon_depth_comparison.png) |
+| [vggt-1b](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/charts/vggt-1b/vggt1b_report.md) | ![lat](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-1b/e2e_latency_bar.png) | ![hm](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-1b/pose_error_heatmap.png) | ![qp](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-1b/quant_pareto_3d.png) | ![ps](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-1b/parity_scatter.png) | ![rc](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-1b/recon_depth_comparison.png) |
+| [pi3](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/charts/pi3/pi3_report.md) | ![lat](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3/e2e_latency_bar.png) | ![hm](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3/pose_error_heatmap.png) | ![qp](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3/quant_pareto_3d.png) | ![ps](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3/parity_scatter.png) | ![rc](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3/recon_depth_comparison.png) |
+| [pi3x](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/charts/pi3x/pi3x_report.md) | ![lat](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3x/e2e_latency_bar.png) | ![hm](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3x/pose_error_heatmap.png) | ![qp](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3x/quant_pareto_3d.png) | ![ps](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3x/parity_scatter.png) | ![rc](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3x/recon_depth_comparison.png) |
+| [mapanything](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/charts/mapanything/mapanything_report.md) | ![lat](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/mapanything/e2e_latency_bar.png) | ![hm](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/mapanything/pose_error_heatmap.png) | ![qp](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/mapanything/quant_pareto_3d.png) | ![ps](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/mapanything/parity_scatter.png) | ![rc](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/mapanything/recon_depth_comparison.png) |
+| [dust3r](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/charts/dust3r/dust3r_report.md) | ![lat](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/dust3r/e2e_latency_bar.png) | ![hm](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/dust3r/pose_error_heatmap.png) | ![qp](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/dust3r/quant_pareto_3d.png) | ![ps](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/dust3r/parity_scatter.png) | ![rc](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/dust3r/recon_depth_comparison.png) |
 
 Each linked report contains: the gate matrix table, the official-protocol
 two-sided metric table, the courtyard reconstruction figures
@@ -57,11 +62,40 @@ gate_matrix.md     the full (model x quant x backend) gate matrix
 RESULTS.md         historical optimization records (vggt-omega journey)
 ```
 
+## Benchmark data (official protocol source)
+
+All six models (and the official vggt-omega protocol) are evaluated on the
+**MapAnything Benchmarking Dataset** (`facebook/map-anything-benchmarking`
+on HuggingFace, WAI format): the ETH3D 13 test scenes expanded to the
+official 130 sets via `ResizedDataset` (seed 777, 10 random walks per
+scene, 2 views, covisibility >= 0.025).
+
+Local cache (already downloaded and verified complete — 13/13 scenes,
+every committed result in this repo was produced from it):
+
+```
+data/map-anything-benchmarking/            # 19 GB, at the repo root (gitignored)
+├── eth3d/                                 # WAI scenes: covisibility/ +
+│   └── <scene>/{covisibility,depth,images}, scene_meta.json
+├── metadata/test/eth3d_scene_list_test.npy
+└── *.zip                                  # original archives (~9.2 GB,
+                                           # deletable once extracted)
+```
+
+Re-download from scratch if ever needed:
+
+```bash
+# from the repo root (--output_dir defaults to <repo>/data/map-anything-benchmarking)
+python3 data_processing/download_and_extract_benchmarking_data.py \
+    --download --extract --delete-zips
+```
+
 Regenerate everything for one model:
 
 ```bash
 python3 scripts/plot_charts_model.py --arch <arch> \
   --gate-log <gate.log> --torch-prefix <torch-dump> --cpp-prefix <cpp-dump>
 PYTHONPATH=/tmp/torch_cuda_lib:. python3 scripts/compare_reconstruction_pi3x.py \
-  --arch <arch> --data-root <eth3d> --metadata-dir <metadata>
+  --arch <arch> --data-root ../data/map-anything-benchmarking/eth3d \
+  --metadata-dir ../data/map-anything-benchmarking/metadata
 ```

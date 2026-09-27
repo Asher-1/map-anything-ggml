@@ -60,7 +60,7 @@ def main() -> None:
     ap.add_argument("--gguf", default="models/gguf/vggt-omega-1b-512-f16.gguf")
     ap.add_argument("--cli", default="build-cuda/bin/vggt-cli")
     ap.add_argument("--image-size", type=int, default=512)
-    ap.add_argument("--ckpt", default="models/pytorch/vggt_omega_1b_512.pt")
+    ap.add_argument("--ckpt", default="models/pytorch/vggt-omega/vggt_omega_1b_512.pt")
     ap.add_argument("--skip-torch", action="store_true",
                     help="reuse the existing torch predictions.npz")
     args = ap.parse_args()

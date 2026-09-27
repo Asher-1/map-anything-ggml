@@ -29,7 +29,7 @@ def lcg_frames(S, H, W, seed):
 
 
 def main() -> None:
-    ckpt = CPP / "models" / "pytorch" / "vggt_omega_1b_512.pt"
+    ckpt = CPP / "models" / "pytorch" / "vggt-omega" / "vggt_omega_1b_512.pt"
     out_prefix = sys.argv[1] if len(sys.argv) > 1 else "/tmp/mapggml_test_ref"
 
     H = W = 256

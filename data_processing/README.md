@@ -52,8 +52,7 @@ The benchmarking data (555 GB in total) as scene-wise zipfiles is hosted at [Hug
 
 ```bash
 python data_processing/download_and_extract_benchmarking_data.py \
-    --download --extract \
-    --output_dir "<your_data_dir>/map-anything-benchmarking-dataset"
+    --download --extract    # defaults to <repo>/data/map-anything-benchmarking
 ```
 
 Run with `--help` for additional options (e.g., `--delete-zips` to remove zip files after extraction, `--extract_dir` to specify a different extraction directory).

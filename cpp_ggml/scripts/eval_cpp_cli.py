@@ -154,8 +154,8 @@ def main() -> None:
     ap.add_argument("--pred-source", choices=["cpp", "torch"], default="cpp",
                     help="cpp = vggt-cli bins; torch = official model (same "
                          "protocol; adjudicates cpp bugs vs protocol gaps)")
-    ap.add_argument("--pt", default="vggt_omega_1b_512.pt",
-                    help="torch-mode checkpoint name under models/pytorch/")
+    ap.add_argument("--pt", default="vggt-omega/vggt_omega_1b_512.pt",
+                    help="torch-mode checkpoint path under models/pytorch/")
     args = ap.parse_args()
     RW, RH = args.resolution
 

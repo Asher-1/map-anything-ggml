@@ -144,9 +144,9 @@ info() { echo "[run_mapggml] $*"; }
 ALL_MODELS="512 416 text vggt-1b pi3 pi3x mapanything dust3r"
 model_info() {
   case "$1" in
-    512|omega512)        echo "vggt_omega vggt_omega_1b_512.pt convert_vggt_omega_to_gguf.py vggt-omega-1b-512 512";;
-    416|omega416)        echo "vggt_omega vggt_omega_1b_416_reproduce.pt convert_vggt_omega_to_gguf.py vggt-omega-1b-416-reproduce 416";;
-    text|omegatext)      echo "vggt_omega vggt_omega_1b_256_text.pt convert_vggt_omega_to_gguf.py vggt-omega-1b-256-text 256";;
+    512|omega512)        echo "vggt_omega vggt-omega/vggt_omega_1b_512.pt convert_vggt_omega_to_gguf.py vggt-omega-1b-512 512";;
+    416|omega416)        echo "vggt_omega vggt-omega/vggt_omega_1b_416_reproduce.pt convert_vggt_omega_to_gguf.py vggt-omega-1b-416-reproduce 416";;
+    text|omegatext)      echo "vggt_omega vggt-omega/vggt_omega_1b_256_text.pt convert_vggt_omega_to_gguf.py vggt-omega-1b-256-text 256";;
     vggt|vggt1b|vggt-1b) echo "vggt vggt1b/model.pt convert_vggt_to_gguf.py vggt-1b 518";;
     pi3)                 echo "pi3 pi3/model.safetensors convert_pi3_to_gguf.py pi3 518";;
     pi3x)                echo "pi3x pi3x/model.safetensors convert_pi3x_to_gguf.py pi3x 518";;

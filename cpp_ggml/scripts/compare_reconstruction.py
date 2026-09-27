@@ -272,7 +272,7 @@ def main() -> None:
     ap.add_argument("--metadata-dir", required=True)
     ap.add_argument("--cli", default=str(CPP / "build-cuda/bin/vggt-cli"))
     ap.add_argument("--gguf-dir", default=str(CPP / "models/gguf"))
-    ap.add_argument("--pt", default="vggt_omega_1b_512.pt")
+    ap.add_argument("--pt", default="vggt-omega/vggt_omega_1b_512.pt")
     ap.add_argument("--scene", default="")
     ap.add_argument("--views", type=int, default=2)
     ap.add_argument("--resolution", type=int, nargs=2, default=[512, 336])

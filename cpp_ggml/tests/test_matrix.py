@@ -22,9 +22,9 @@ import numpy as np
 CPP = Path(__file__).resolve().parent.parent
 MODEL_RES = {"512": 512, "416": 416, "text": 256}
 MODEL_CKPT = {
-    "512": "vggt_omega_1b_512.pt",
-    "416": "vggt_omega_1b_416_reproduce.pt",
-    "text": "vggt_omega_1b_256_text.pt",
+    "512": "vggt-omega/vggt_omega_1b_512.pt",
+    "416": "vggt-omega/vggt_omega_1b_416_reproduce.pt",
+    "text": "vggt-omega/vggt_omega_1b_256_text.pt",
 }
 MODEL_GGUF = {
     "512": "vggt-omega-1b-512",

@@ -3,7 +3,7 @@
 
 Usage:
   python3 convert_vggt_omega_to_gguf.py \
-      cpp_ggml/models/pytorch/vggt_omega_1b_512.pt \
+      cpp_ggml/models/pytorch/vggt-omega/vggt_omega_1b_512.pt \
       cpp_ggml/models/gguf/vggt-omega-1b-512-f16.gguf --outtype f16
 
 Supported checkpoints (facebook/VGGT-Omega):

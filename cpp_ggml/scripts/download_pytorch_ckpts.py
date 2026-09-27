@@ -17,9 +17,9 @@ from huggingface_hub import hf_hub_download
 # to every entry via HF_ENDPOINT.
 CKPTS = [
     # facebook/VGGT-Omega (gated): three official checkpoints
-    ("vggt_omega_1b_512.pt",            "facebook/VGGT-Omega", "vggt_omega_1b_512.pt"),
-    ("vggt_omega_1b_416_reproduce.pt",  "facebook/VGGT-Omega", "vggt_omega_1b_416_reproduce.pt"),
-    ("vggt_omega_1b_256_text.pt",       "facebook/VGGT-Omega", "vggt_omega_1b_256_text.pt"),
+    ("vggt-omega/vggt_omega_1b_512.pt",           "facebook/VGGT-Omega", "vggt_omega_1b_512.pt"),
+    ("vggt-omega/vggt_omega_1b_416_reproduce.pt", "facebook/VGGT-Omega", "vggt_omega_1b_416_reproduce.pt"),
+    ("vggt-omega/vggt_omega_1b_256_text.pt",      "facebook/VGGT-Omega", "vggt_omega_1b_256_text.pt"),
     # official VGGT-1B (facebookresearch)
     ("vggt1b/model.pt",                 "facebook/VGGT-1B",    "model.pt"),
     # pi3 / pi3x (yyfz233)

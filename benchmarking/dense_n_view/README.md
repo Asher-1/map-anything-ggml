@@ -13,8 +13,7 @@ Download and extract the pre-processed WAI format benchmarking data directly fro
 
 ```bash
 python data_processing/download_and_extract_benchmarking_data.py \
-    --download --extract \
-    --output_dir "<your_data_dir>/map-anything-benchmarking-dataset"
+    --download --extract    # defaults to <repo>/data/map-anything-benchmarking
 ```
 
 The downloaded data includes test splits for ETH3D, ScanNet++V2, and TartanAirV2-WB in WAI format. Run with `--help` for additional options.

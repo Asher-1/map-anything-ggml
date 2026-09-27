@@ -4,7 +4,7 @@ ggml-vs-PyTorch comparison charts).
 
 Usage:
   python3 benchmarks/bench_pytorch_baseline.py \
-      --ckpt models/pytorch/vggt_omega_1b_512.pt \
+      --ckpt models/pytorch/vggt-omega/vggt_omega_1b_512.pt \
       --frames /tmp/vggt_smoke/frames.bin --H 512 --W 512 --S 2 \
       --repeats 5 --warmup 2 --out benchmarks/results
 """

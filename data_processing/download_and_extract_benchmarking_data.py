@@ -140,8 +140,9 @@ def get_parser():
     parser.add_argument(
         "--output_dir",
         type=str,
-        required=True,
-        help="Target directory for downloaded data",
+        default=str(Path(__file__).resolve().parent.parent / "data" / "map-anything-benchmarking"),
+        help="Target directory for downloaded data (default: <repo-root>/data/"
+             "map-anything-benchmarking)",
     )
     parser.add_argument(
         "--extract_dir",

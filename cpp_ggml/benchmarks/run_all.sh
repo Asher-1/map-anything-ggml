@@ -54,7 +54,7 @@ EOF
 fi
 
 if [[ $SKIP_TORCH_REF -eq 0 && ! -f "$STAGES/ref.npz" ]]; then
-  CKPT="models/pytorch/$(ls models/pytorch | grep -E "512|416|256" | grep -E "${RES}" | head -1)"
+  CKPT="models/pytorch/vggt-omega/$(ls models/pytorch/vggt-omega | grep -E "512|416|256" | grep -E "${RES}" | head -1)"
   echo "== torch reference ($CKPT) =="
   python3 scripts/dump_torch_stages.py "$CKPT" "$FRAMES" "$RES" "$RES" "$S" "$STAGES"
 fi
@@ -76,7 +76,7 @@ fi
 if [[ $SKIP_PT_BASELINE -eq 0 ]]; then
   echo "== PyTorch-CUDA baseline =="
   python3 benchmarks/bench_pytorch_baseline.py \
-    --ckpt "models/pytorch/vggt_omega_1b_${RES}.pt" --frames "$FRAMES" \
+    --ckpt "models/pytorch/vggt-omega/vggt_omega_1b_${RES}.pt" --frames "$FRAMES" \
     --H "$RES" --W "$RES" --S "$S" --repeats "$REPEATS" --warmup 2 \
     --out benchmarks/results || echo "baseline skipped (no CUDA?)"
 fi
