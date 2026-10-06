@@ -61,6 +61,10 @@ def main() -> None:
     ap.add_argument("--cli", default="build-cuda/bin/vggt-cli")
     ap.add_argument("--image-size", type=int, default=512)
     ap.add_argument("--ckpt", default="models/pytorch/vggt-omega/vggt_omega_1b_512.pt")
+    ap.add_argument("--device", default="cuda", choices=["cuda", "cpu"],
+                    help="torch device for the f32 reference forward; cpu is "
+                         "numerically equivalent for the f32 path and lets the "
+                         "comparison run on a GPU-busy box")
     ap.add_argument("--skip-torch", action="store_true",
                     help="reuse the existing torch predictions.npz")
     args = ap.parse_args()
@@ -85,11 +89,11 @@ def main() -> None:
         sd = sd.get("model", sd.get("state_dict", sd))
         model_keys = set(model.state_dict().keys())
         model.load_state_dict({k: v for k, v in sd.items() if k in model_keys})
-        model = model.cuda()
+        model = model.to(args.device)
 
         imgs_t = load_and_preprocess_images(
             images, mode="balanced", image_resolution=args.image_size)
-        imgs_t = imgs_t.cuda()
+        imgs_t = imgs_t.to(args.device)
         imgs_t.cpu().numpy().tofile(out / "cpp" / "torch_preprocessed_frames.bin")
 
         with torch.inference_mode():
@@ -186,6 +190,7 @@ def main() -> None:
                         depth_c], axis=-1)
     world_c = np.einsum("sij,shwj->shwi", np.transpose(rot, (0, 2, 1)),
                         cam_pts - tr[:, None, None, :])
+    np.save(out / "cpp" / "world_points_from_depth.npy", world_c)
 
     lines = ["# Dual-runtime default-config output comparison (official demo path vs ggml CLI)", "",
              f"- inputs: {images}",

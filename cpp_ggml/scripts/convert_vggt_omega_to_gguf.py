@@ -18,7 +18,7 @@ Checkpoint-specific handling:
     We pre-multiply the bias and drop the mask, so the C++ graph sees a
     plain Linear.
   - LayerNorm/conv/rope-period buffers stay floating point under quantized
-    outtypes; only 2-D Linear weights are quantized (q8_0/q5_K).
+    outtypes; only 2-D Linear weights are quantized (q8_0/q6_K/q5_K).
 
 GGUF dimension convention: gguf-py reverses numpy shape when writing, so a
 torch Linear weight {out, in} lands as ggml ne {in, out} and a Conv2d kernel
@@ -40,16 +40,18 @@ QK_K = 256
 
 QTYPES = {
     "q8_0": GGMLQuantizationType.Q8_0,
+    "q6_K": GGMLQuantizationType.Q6_K,
     "q5_K": GGMLQuantizationType.Q5_K,
 }
 
 FILE_TYPE = {
-    "f32": 0, "f16": 1, "q8_0": 8, "q5_K": 13,
+    "f32": 0, "f16": 1, "q8_0": 8, "q6_K": 15, "q5_K": 13,
 }
 
 # (block_size, type_size) for the ctypes K-quant path (ggml-quants.h):
 # all K-quants block over QK_K = 256 elements
 KBLK = {
+    GGMLQuantizationType.Q6_K: (256, 210),
     GGMLQuantizationType.Q5_K: (256, 176),
 }
 
@@ -178,6 +180,23 @@ def main():
     ctypes_lib = None
     if args.outtype in QTYPES:
         ctypes_lib = load_ggml_lib()
+        # runtime drift guard for the KBLK table (converter iron rule): query
+        # the real type geometry from the loaded libggml and assert the static
+        # table matches (a wrong type_size once produced undersized buffers ->
+        # SIGSEGV inside quantize_row_q8_0_ref)
+        ctypes_lib.ggml_type_size.restype = ctypes.c_size_t
+        ctypes_lib.ggml_type_size.argtypes = [ctypes.c_int]
+        ctypes_lib.ggml_blck_size.restype = ctypes.c_int
+        ctypes_lib.ggml_blck_size.argtypes = [ctypes.c_int]
+        for _name, _qt in QTYPES.items():
+            if _qt not in KBLK:
+                continue  # q8_0 goes through the dedicated QK8_0 byte path
+            _blck, _tsize = KBLK[_qt]
+            _lib_blck = ctypes_lib.ggml_blck_size(int(_qt))
+            _lib_tsize = ctypes_lib.ggml_type_size(int(_qt))
+            assert (_lib_blck, _lib_tsize) == (_blck, _tsize), (
+                f"KBLK drift for {_name}: libggml reports "
+                f"({_lib_blck}, {_lib_tsize})")
 
     print(f"loading {args.checkpoint} ...")
     sd = unwrap_checkpoint(torch.load(args.checkpoint, map_location="cpu",

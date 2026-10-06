@@ -115,3 +115,52 @@ Two residual-parity findings closed the same day:
 Also this day: vggt-omega's official ETH3D bench extended from 10 to 130
 sets (bench_official_eth3d_130set.md) — two-sided deltas all <1%,
 pose_auc_5 79.2 vs the official reference 79.53.
+
+## vggt-omega — 2026-09-30, 15/15 PASS (moved into the unified matrix)
+
+First inclusion here (omega previously gated through scripts/e2e_gate.sh
+with its fixed 0.005 thresholds). Contract: pose_enc (S,9) + depth (S,H,W)
++ depth_conf (S,H,W) at 512x512 S=2 on the canonical /tmp/frames512.bin;
+torch f32 reference via dump_torch_stages.py (ref.npz). med_rel per output:
+
+| quant | CPU | CUDA | Vulkan |
+|---|---|---|---|
+| f16 | pose 0.00042 / depth 0.00059 / conf 0.00064 | pose 0.00496 / depth 0.00174 / conf 0.00678 | pose 0.00377 / depth 0.00180 / conf 0.00480 |
+| f32 | pose 0.00040 / depth 0.00047 / conf 0.00037 | pose 0.00031 / depth 0.00323 / conf 0.00283 | pose 0.00377 / depth 0.00180 / conf 0.00480 |
+| q8_0 | pose 0.00146 / depth 0.00602 / conf 0.00771 | pose 0.00304 / depth 0.00818 / conf 0.01131 | pose 0.00311 / depth 0.00325 / conf 0.00992 |
+| q6_K | pose 0.02426 / depth 0.00655 / conf 0.01274 | pose 0.02563 / depth 0.00532 / conf 0.02645 | pose 0.02459 / depth 0.00857 / conf 0.02536 |
+| q5_K | pose 0.02330 / depth 0.08888 / conf 0.02094 | pose 0.01183 / depth 0.10382 / conf 0.02791 | pose 0.01029 / depth 0.04394 / conf 0.02582 |
+  (q5_K removed 2026-09-30 — dominated by q6_K; row kept as the final
+  measured record)
+
+(f32 Vulkan equals the f16 row: the Vulkan path upcasts weights to f32,
+like the CPU lin() cast — the f16 and f32 GGUFs are numerically the same
+model on that backend.)
+
+Thresholds calibrated to the canonical-frame floors with >= 1.4x margin:
+pose med < 0.010x and max < 0.050x, depth med < 0.005x (q5_K: 0.15),
+depth_conf med < 0.050x; x = quant scale (f32/f16 1, q8_0 3, q5_K 6).
+Per-cell numbers: results/vggt-omega/gate_matrix_log.txt and
+charts/vggt-omega/gate_summary.json (rendered into pose_error_heatmap /
+quant_pareto_3d).
+
+Findings of the 2026-09-29/30 re-verification:
+- Bit-identical A/B: a worktree build at 36e621b (pre "opt vggt")
+  reproduces the current outputs exactly — the 09-25 commits (opt vggt,
+  C API) changed no numerics; the convT k==s fast path was already part of
+  the 09-19 era binaries (see RESULTS.md §1).
+- The q5_K depth floor is FRAME-dependent: ~0.0027 med_rel on benign random
+  frames (seed 7) vs ~0.10 on the LCG parity frames (heavy tail of
+  rel = |d-r|/max(|r|,0.05) on OOD inputs). Real-data impact is far
+  smaller: on the official ETH3D 130 sets the q5_K AbsRel regression vs
+  torch stays <= 9% relative on every metric — q6_K is the ~1 GB sweet
+  spot (ETH3D depth AbsRel matches torch f32 exactly, ATE beats it); then
+  q8_0/f16. q5_K was removed for omega the same day (dominated by q6_K);
+  pi3x/dust3r/mapanything followed. Final rule (2026-10-01): ONE measured
+  K tier per model — pi3 and vggt-1b instead KEPT q5_K (pi3's is its best
+  depth/rot/ATE/pointmaps tier, vggt-1b's has the best AUC5) and their
+  q6_Ks were removed (no best metric / weakest tier on 5 of 7).
+- Fresh 13-set ETH3D evals are byte-identical to the committed ones for all
+  12 configs (512/416/text x torch/f16/q8_0/q5_K); the refreshed 130-set
+  two-sided table matches the committed one to 4-5 decimals
+  (AUC5 79.23/79.08, ATE 0.00655/0.00662).

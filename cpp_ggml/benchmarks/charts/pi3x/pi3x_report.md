@@ -1,8 +1,8 @@
 # pi3x evaluation report — C++ ggml vs official PyTorch
 
-> 2026-09-22 · official torch f32 forward vs cpp `pi3x-{f16,q8_0,q5_K}.gguf`
-> · RTX 4090 · every number measured by this repo's own scripts, no
-> hand-copied figures.
+> 2026-09-22 · official torch f32 forward vs cpp `pi3x-{f16,q8_0,q6_K}.gguf`
+> (q5_K removed 2026-10-01, dominated by q6_K) · RTX 4090 · every number
+> measured by this repo's own scripts, no hand-copied figures.
 
 ## 1. Summary
 
@@ -90,7 +90,7 @@ reported as 526 — and have been re-measured).
 
 ```bash
 # gate matrix (12 cells)
-scripts/e2e_gate_matrix.sh pi3x "f16 f32 q8_0 q5_K"
+scripts/e2e_gate_matrix.sh pi3x "f16 f32 q8_0 q6_K"
 # official ETH3D bench (two-sided)
 python3 scripts/bench_official_eth3d.py ... --arch pi3x --num-sets 130 --resolution 518x336
 # paper protocol (13 scenes)

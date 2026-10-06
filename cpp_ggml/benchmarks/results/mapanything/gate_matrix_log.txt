@@ -1,0 +1,65 @@
+== mapanything f16 build-cpu ==
+  pose_raw         max 0.00121  med_rel 0.00015  (gate med < 0.01)
+  rays             max 0.00020  med_rel 0.00002  (gate med < 0.01)
+  depth            max 0.00168  med_rel 0.00006  (gate med < 0.01)
+  conf             max 0.00012  med_rel 0.00000  (gate med < 0.01)
+  pts3d            max 0.00140  med_rel 0.00010  (gate med < 0.02)
+  GATE: PASS  [mapanything f16]
+== mapanything f16 build-cuda ==
+  pose_raw         max 0.00976  med_rel 0.00104  (gate med < 0.01)
+  rays             max 0.00188  med_rel 0.00019  (gate med < 0.01)
+  depth            max 0.01874  med_rel 0.00167  (gate med < 0.01)
+  conf             max 0.00089  med_rel 0.00002  (gate med < 0.01)
+  pts3d            max 0.01645  med_rel 0.00160  (gate med < 0.02)
+  GATE: PASS  [mapanything f16]
+== mapanything f16 build-vulkan ==
+  pose_raw         max 0.00233  med_rel 0.00028  (gate med < 0.01)
+  rays             max 0.00145  med_rel 0.00015  (gate med < 0.01)
+  depth            max 0.01623  med_rel 0.00128  (gate med < 0.01)
+  conf             max 0.00073  med_rel 0.00001  (gate med < 0.01)
+  pts3d            max 0.01510  med_rel 0.00125  (gate med < 0.02)
+  GATE: PASS  [mapanything f16]
+== mapanything q8_0 build-cpu ==
+  pose_raw         max 0.00423  med_rel 0.00067  (gate med < 0.03)
+  rays             max 0.00074  med_rel 0.00018  (gate med < 0.03)
+  depth            max 0.00995  med_rel 0.00043  (gate med < 0.03)
+  conf             max 0.00261  med_rel 0.00006  (gate med < 0.03)
+  pts3d            max 0.00782  med_rel 0.00039  (gate med < 0.06)
+  GATE: PASS  [mapanything q8_0]
+== mapanything q8_0 build-cuda ==
+  pose_raw         max 0.01264  med_rel 0.00165  (gate med < 0.03)
+  rays             max 0.00171  med_rel 0.00020  (gate med < 0.03)
+  depth            max 0.01712  med_rel 0.00137  (gate med < 0.03)
+  conf             max 0.00189  med_rel 0.00003  (gate med < 0.03)
+  pts3d            max 0.01485  med_rel 0.00164  (gate med < 0.06)
+  GATE: PASS  [mapanything q8_0]
+== mapanything q8_0 build-vulkan ==
+  pose_raw         max 0.01360  med_rel 0.00121  (gate med < 0.03)
+  rays             max 0.00151  med_rel 0.00015  (gate med < 0.03)
+  depth            max 0.01550  med_rel 0.00071  (gate med < 0.03)
+  conf             max 0.00142  med_rel 0.00001  (gate med < 0.03)
+  pts3d            max 0.01417  med_rel 0.00098  (gate med < 0.06)
+  GATE: PASS  [mapanything q8_0]
+== mapanything q6_K build-cpu ==
+  pose_raw         max 0.02515  med_rel 0.00353  (gate med < 0.03)
+  rays             max 0.00277  med_rel 0.00079  (gate med < 0.03)
+  depth            max 0.05800  med_rel 0.01120  (gate med < 0.03)
+  conf             max 0.00409  med_rel 0.00008  (gate med < 0.03)
+  pts3d            max 0.04132  med_rel 0.01297  (gate med < 0.06)
+  GATE: PASS  [mapanything q6_K]
+== mapanything q6_K build-cuda ==
+  pose_raw         max 0.02008  med_rel 0.00294  (gate med < 0.03)
+  rays             max 0.00257  med_rel 0.00039  (gate med < 0.03)
+  depth            max 0.01844  med_rel 0.00096  (gate med < 0.03)
+  conf             max 0.00280  med_rel 0.00012  (gate med < 0.03)
+  pts3d            max 0.01438  med_rel 0.00178  (gate med < 0.06)
+  GATE: PASS  [mapanything q6_K]
+== mapanything q6_K build-vulkan ==
+  pose_raw         max 0.02030  med_rel 0.00191  (gate med < 0.03)
+  rays             max 0.00170  med_rel 0.00024  (gate med < 0.03)
+  depth            max 0.03062  med_rel 0.00453  (gate med < 0.03)
+  conf             max 0.00271  med_rel 0.00012  (gate med < 0.03)
+  pts3d            max 0.02581  med_rel 0.00505  (gate med < 0.06)
+  GATE: PASS  [mapanything q6_K]
+==================================
+MATRIX: 9/9 PASS, 0 FAIL

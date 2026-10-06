@@ -3,8 +3,11 @@
 # MODEL CARDS — all six supported models (ckpts, GGUF, accuracy, speed)
 
 > This directory (`cpp_ggml/models/`) holds the official torch checkpoints
-> (`pytorch/<model>/`, conversion-only) and all 24 GGUF files (`gguf/`, the
-> C++ runtime input: 6 architectures x f32/f16/q8_0/q5_K). This document
+> (`pytorch/<model>/`, conversion-only) and all 32 GGUF files (`gguf/`, the
+> C++ runtime input: 6 architectures, each f32/f16/q8_0 plus ONE measured
+> K-quant — q6_K for omega/pi3x/mapanything/dust3r, q5_K for pi3/vggt-1b
+> (the tier that wins on that backbone's official-protocol data). This
+> document
 > covers per-model use cases, size/VRAM, official-protocol accuracy and
 > measured speed for **every** supported model, with the measured charts
 > embedded inline.
@@ -23,17 +26,17 @@ parity matrix.
 
 | Model | Family / paradigm | pointmaps↓ | depth↓ | ATE↓ | rot°↓ | metric scale↓ | speed vs torch | gate |
 |---|---|---|---|---|---|---|---|---|
-| **vggt-omega** (default) | vggt (N-view) | **0.0302** | **0.0208** | **0.0065** | **0.56** | 0.762 | CUDA 0.87x | 4q x 3b all PASS (+ text cos 1.0) |
-| pi3x | pi3 + metric scale | 0.0533 | 0.0369 | 0.0162 | 2.11 | 0.251 | CUDA 1.44-1.50x | 12/12 |
-| mapanything | unified (N-view, AAT) | 0.0553 | 0.0469 | 0.0124 | 0.92 | **0.162** | CUDA 1.64-2.23x | 9/9 |
-| pi3 | pi3 (N-view) | 0.0650 | 0.0485 | 0.0172 | 1.82 | 0.733 | CUDA ~1.0x | 12/12 |
-| vggt-1b | vggt (N-view) | 0.0674 | 0.0541 | 0.0208 | 2.28 | 0.788 | CUDA 1.60-1.69x | 12/12 |
-| dust3r | pair-wise ancestor | 0.1008 | 0.1033 | 0.0509 | 2.77 | 0.897 | **CUDA 1.71-1.75x** | 12/12 |
+| **vggt-omega** (default) | vggt (N-view) | **0.0302** | **0.0208** | **0.0065** | **0.56** | 0.762 | CUDA 0.85x | 4q x 3b all PASS (+ text cos 1.0) |
+| pi3x | pi3 + metric scale | 0.0533 | 0.0369 | 0.0162 | 2.11 | 0.251 | CUDA 1.43-1.48x | 12/12 |
+| mapanything | unified (N-view, AAT) | 0.0553 | 0.0469 | 0.0124 | 0.92 | **0.162** | CUDA 1.79-2.28x | 12/12 |
+| pi3 | pi3 (N-view) | 0.0650 | 0.0485 | 0.0172 | 1.82 | 0.733 | CUDA ~1.0x | 15/15 |
+| vggt-1b | vggt (N-view) | 0.0674 | 0.0541 | 0.0208 | 2.28 | 0.788 | CUDA 1.60-1.69x | 15/15 |
+| dust3r | pair-wise ancestor | 0.1008 | 0.1033 | 0.0509 | 2.77 | 0.897 | **CUDA 2.02-2.06x** | 12/12 |
 
 How to read the figures embedded in every card below:
 
 - `e2e_latency_bar` — steady-state P50 latency (log axis): official torch
-  fp32 vs cpp f32/f16/q8_0/q5_K, per backend;
+  fp32 vs cpp f32/f16/q8_0/q6_K/q5_K, per backend;
 - `quant_pareto_3d` — file size vs pose error vs depth error per quant;
 - `parity_scatter` — cpp f16 vs torch f32 per-point parity (random frames);
 - `pose_error_heatmap` — gate-matrix error heatmap (quants x backends);
@@ -47,7 +50,7 @@ How to read the figures embedded in every card below:
 |---|---|---|
 | >= 6 GB VRAM, accuracy first | **512-f16** | flagship resolution, closest to PyTorch on every metric |
 | 4-6 GB VRAM / best value | **512-q8_0** | half the size, fastest (87 ms), near-f16 accuracy |
-| 3-4 GB VRAM | **512-q5_K** | 859 MB, 90 ms, visible but passing accuracy ladder |
+| ~1 GB VRAM / balanced sweet spot | **512-q6_K** | 1.05 GB; ETH3D depth AbsRel matches torch f32 exactly, ATE even beats it (AUC5 76.5) |
 | Metric scale + camera poses | **mapanything-f16** | metric_scale 0.162 far ahead; also the fastest large model on CUDA |
 | Fastest CUDA inference | **dust3r-q8_0** | 84.9 ms pair-wise (1.75x vs official torch) |
 | Reproduce the paper's 416-reproduce numbers | **416-reproduce-f16** | official reproduction ckpt |
@@ -65,26 +68,29 @@ How to read the figures embedded in every card below:
   budget to each input's aspect ratio)
 - **Use cases**: general scene reconstruction (indoor/outdoor, 2-100 views),
   depth estimation, camera pose estimation
-- **GGUF**: f32 4.36 GB / f16 2.18 GB / q8_0 1.26 GB / q5_K 859 MB
+- **GGUF**: f32 4.36 GB / f16 2.18 GB / q8_0 1.26 GB / q6_K 1.05 GB
 - **Official protocol accuracy** (ETH3D, 130 sets, official dataset + 8 metrics):
 
-| Metric | PyTorch f32 | f16 | q8_0 | q5_K | Official ref* |
+| Metric | PyTorch f32 | f16 | q8_0 | q6_K | Official ref* |
 |---|---|---|---|---|---|
-| Pose AUC@5 up (x100) | 79.23 | **79.08** | 77.08 | 71.69 | 79.53 |
-| Pose ATE RMSE down | 0.00655 | 0.00662 | 0.00648 | 0.00712 | 0.00999 |
-| Depth AbsRel down | 0.0208 | 0.0209 | 0.0210 | 0.0221 | 0.0204 |
-| Point AbsRel down | 0.0302 | 0.0302 | 0.0305 | 0.0328 | 0.0263 |
+| Pose AUC@5 up (x100) | 79.23 | **79.08** | 77.08 | 76.46 | 79.53 |
+| Pose ATE RMSE down | 0.00655 | 0.00662 | 0.00648 | **0.00644** | 0.00999 |
+| Depth AbsRel down | 0.0208 | 0.0209 | 0.0210 | **0.0207** | 0.0204 |
+| Point AbsRel down | 0.0302 | 0.0302 | 0.0305 | 0.0302 | 0.0263 |
 
 \* Official reproduction.md (retrained ckpt, 2-100 views); slightly wider
 protocol, order-of-magnitude reference only.
 
 - **Speed** (512x512x2, steady-state pure inference, RTX 4090):
 
-| Format | PyTorch f32 | f16 | q8_0 | q5_K |
-|---|---|---|---|---|
-| CUDA | 80.7ms | 93.1ms | **87.0ms** | 89.9ms |
-| Vulkan | — | 128.8ms | 130.3ms | 134.6ms |
-| CPU | — | 17.8s | **12.3s** | 19.6s |
+| Format | PyTorch f32 | f32 | f16 | q8_0 | q6_K |
+|---|---|---|---|---|---|
+| CUDA | 65.0ms | 109.0 | 76.2 | **70.7** | 75.5 |
+| Vulkan | — | — | 94.7 | 97.3 | 101.5 |
+| CPU | — | 18682  | 17.8s | **12.3s** | — |
+
+(2026-10-02 re-measure, 10 repeats, torch baseline re-run in the same
+session; CPU rows keep the 09-24 exclusive-CPU numbers)
 
 ![omega latency](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/e2e_latency_bar.png)
 
@@ -106,7 +112,7 @@ protocol, order-of-magnitude reference only.
 - **Default resolution**: 416
 - **Use case**: reproducing the official paper/tech-report evaluation numbers
   (this is the ckpt behind reproduction.md)
-- **GGUF**: f32 4.36 GB / f16 2.18 GB / q8_0 1.26 GB / q5_K 859 MB
+- **GGUF**: f32 4.36 GB / f16 2.18 GB / q8_0 1.26 GB / q6_K 1.05 GB
 - **Official protocol**: see
   [`benchmarks/results/vggt-omega/eval_eth3d_416_*.md`](https://github.com/Asher-1/map-anything-ggml/tree/main/cpp_ggml/benchmarks/results/vggt-omega/)
   and [`eval_eth3d_matrix.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/eval_eth3d_matrix.md);
@@ -124,7 +130,7 @@ protocol, order-of-magnitude reference only.
   `.text_embedding.bin` (2048-dim, L2-normalized). Gate: 256-text f16
   PASS with **text cosine = 1.000000** vs the official torch head
   (see [`benchmarks/results/gate_matrix.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/gate_matrix.md))
-- **GGUF**: f32 5.15 GB / f16 2.58 GB / q8_0 1.47 GB / q5_K 995 MB (the
+- **GGUF**: f32 5.15 GB / f16 2.58 GB / q8_0 1.47 GB / q6_K 1.22 GB (the
   text head adds ~0.4 GB of f32 extras over the 512 variant)
 - **Official protocol**:
   [`benchmarks/results/vggt-omega/eval_eth3d_text_*.md`](https://github.com/Asher-1/map-anything-ggml/tree/main/cpp_ggml/benchmarks/results/vggt-omega/)
@@ -139,8 +145,11 @@ protocol, order-of-magnitude reference only.
   model besides omega emitting a dedicated **world pointmap + conf**
   (`.points.bin` / `.points_conf.bin`) alongside pose/depth
 - **GGUF**: f32 4.54 GB / f16 2.43 GB / q8_0 1.43 GB / q5_K 1.04 GB
-- **Gate**: 12/12 PASS (f16 pose max 0.0006-0.0025, depth med_rel
-  0.06-0.29%; [`benchmarks/results/gate_matrix.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/gate_matrix.md))
+- **Gate**: 12/12 PASS (f32/f16/q8_0/q5_K x CPU/CUDA/Vulkan; f16 pose max
+  0.0006-0.0025, depth med_rel 0.06-0.29%; q5_K kept — its AUC5 63.7 is
+  the best of the three measured quants; q6_K removed 2026-10-01 — the
+  weakest tier on 5 of 7 metrics, dominated by q8_0/q5_K —
+  [`benchmarks/results/gate_matrix.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/gate_matrix.md))
 - **Official protocol** (two-sided, 130 sets):
   [`benchmarks/results/vggt-1b/bench_official_eth3d_vggt.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/vggt-1b/bench_official_eth3d_vggt.md)
 - **Real-scene reconstruction** (courtyard, window [5,0], 518x336):
@@ -180,7 +189,10 @@ protocol, order-of-magnitude reference only.
 - **Use cases**: N-view reconstruction with the simplified pi3 head set;
   poses are row-major c2w 4x4 (`.pose.bin`), depth = local_points camera-z
 - **GGUF**: f32 3.66 GB / f16 1.84 GB / q8_0 981 MB / q5_K 639 MB
-- **Gate**: 12/12 PASS (f16 local_points med_rel 0.0004-0.0037)
+- **Gate**: 12/12 PASS (f32/f16/q8_0/q5_K x CPU/CUDA/Vulkan; f16
+  local_points med_rel 0.0004-0.0037; q5_K is pi3's best depth/rot/ATE/
+  pointmaps tier — 0.046483 / 1.086°; q6_K removed 2026-10-01 — no best
+  metric on the 130 sets, squeezed between q5_K and q8_0)
 - **Official protocol** (130 sets, two-sided): metric-level parity —
   [`benchmarks/results/pi3/bench_official_eth3d_pi3.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/pi3/bench_official_eth3d_pi3.md)
 - **Paper protocol** (13 scenes, Acc/Comp/NC + Umeyama/ICP): torch/cpp
@@ -224,42 +236,46 @@ protocol, order-of-magnitude reference only.
 - **Default resolution**: 518 (patch 14)
 - **Use cases**: pi3 plus a metric-scale head (`.scale.bin`); balanced
   alternative with a pinned paper protocol
-- **GGUF**: f32 3.79 GB / f16 1.94 GB / q8_0 1.08 GB / q5_K 731 MB
-- **Gate**: 12/12 PASS (thresholds calibrated to pi3x's own f16-KV noise
-  floor; q5_K's ConvHead chain is sensitive to 4.5-bit weights —
-  **q8_0 is the recommended quant**)
-- **Official protocol** (130 sets, 518x336, two-sided):
+- **GGUF**: f32 3.79 GB / f16 1.94 GB / q8_0 1.08 GB / q6_K 894 MB
+- **Gate**: 12/12 PASS (f32/f16/q8_0/q6_K x CPU/CUDA/Vulkan; thresholds
+  calibrated to pi3x's own f16-KV noise floor, q6_K lp med_rel
+  0.033-0.055). q5_K was removed on 2026-10-01 — its ConvHead chain is
+  sensitive to 4.5-bit weights and the fleet confirmation shows q6_K wins
+  AUC5 by +3.7 points at the same size class (**q8_0 is the recommended
+  quant**)  
+- **Official protocol** (130 sets, 518x336, two-sided; per-quant cpp-only
+  numbers from results/FLEET_QUANT_CONFIRMATION.md):
 
-| Metric | torch f32 | cpp f16 |
-|---|---|---|
-| pointmaps_abs_rel | 0.053340 | 0.053448 |
-| z_depth_abs_rel | 0.036922 | 0.036927 |
-| pose_ate_rmse | 0.016232 | 0.016280 |
-| pose_auc_5 (x100) | 66.92 | **67.08** |
-| rot_err_deg | 2.108 | 2.113 |
-| metric_scale_abs_rel | 0.250733 | 0.251058 |
+| Metric | torch f32 | cpp f16 | cpp q8_0 | cpp q6_K |
+|---|---|---|---|---|
+| pointmaps_abs_rel | 0.053340 | 0.053448 | 0.053749 | 0.053740 |
+| z_depth_abs_rel | 0.036922 | 0.036927 | 0.037098 | 0.036885 |
+| pose_ate_rmse | 0.016232 | 0.016280 | 0.016243 | 0.016311 |
+| pose_auc_5 (x100) | 66.92 | **67.08** | **67.38** | 66.15 |
+| rot_err_deg | 2.108 | 2.113 | 2.121 | 2.121 |
+| metric_scale_abs_rel | 0.250733 | 0.251058 | 0.252437 | 0.251801 |
 
 - **Paper protocol** (13 scenes): torch/cpp deltas <= 0.0021 on every
   metric
 - **Real-scene reconstruction** (courtyard, window [5,0], 518x336):
 
-| metric | torch | f16 | q8_0 | q5_K |
+| metric | torch | f16 | q8_0 | q6_K |
 |---|---|---|---|---|
-| AbsRel | 0.015779 | 0.015774 | 0.016317 | 0.017492 |
-| d1 | 0.999368 | 0.999368 | 0.999368 | 0.999368 |
-| chamfer | 0.011814 | 0.011735 | 0.011897 | 0.012413 |
-| fscore | 0.981632 | 0.981998 | 0.981998 | 0.982204 |
-| pose rot diff (deg) | — | 0.028 | 0.088 | 0.905 |
-| pose trans diff (m) | — | 0.005 | 0.032 | 0.053 |
+| AbsRel | 0.015779 | 0.015774 | 0.016317 | **0.015737** |
+| d1 | 0.999368 | 0.999368 | 0.999368 | 0.999346 |
+| chamfer | 0.011814 | 0.011735 | 0.011897 | 0.011826 |
+| fscore | 0.981632 | 0.981998 | 0.981998 | 0.981659 |
+| pose rot diff (deg) | — | **0.028** | 0.088 | 0.190 |
+| pose trans diff (m) | — | 0.005 | 0.032 | 0.011 |
 
 - **Speed** (518x518x2, P50, RTX 4090 — faster than official torch across
   all three backends; re-measured 2026-09-24, exclusive):
 
-| Backend | torch fp32 | torch TF32 | f32 | f16 | q8_0 | q5_K |
+| Backend | torch fp32 | torch TF32 | f32 | f16 | q8_0 | q6_K |
 |---|---|---|---|---|---|---|
-| CUDA | 290.3ms | 242.2 | 265.4 | **201.2 (1.44x)** | **193.7 (1.50x)** | 196.0 (1.48x) |
-| Vulkan | — | — | 248.4 | **239.0 (1.21x)** | 240.5 | 245.0 |
-| CPU | 17526ms | — | 13986 (1.25x) | **12959 (1.35x)** | 14891 (1.18x) | 15187 (1.15x) |
+| CUDA | 290.3ms | 242.2 | 252.5 | **202.5 (1.43x)** | **195.7 (1.48x)** | 202.1 (1.44x) |
+| Vulkan | — | — | 237.4 | **229.8 (1.26x)** | 232.9 (1.25x) | 237.8 (1.22x) |
+| CPU | 17526ms | — | 13986 (1.25x) | **12959 (1.35x)** | 14891 (1.18x) | — |
 
 ![pi3x recon depth](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/pi3x/recon_depth_comparison.png)
 
@@ -282,23 +298,24 @@ protocol, order-of-magnitude reference only.
   emits rays + non-ambiguous mask (`.mask.bin`) + metric scale
   (`.scale.bin`) on top of the pi3-family contract — the pick for metric
   scale and camera poses
-- **GGUF**: f32 4.44 GB / f16 2.81 GB / q8_0 1.26 GB / q5_K 859 MB
-- **Gate**: 9/9 PASS (f16/q8_0/q5_K x CPU/CUDA/Vulkan, f16 rays med_rel
-  ~0.001-0.003; the f32 GGUF exists for the latency baseline column)
+- **GGUF**: f32 4.44 GB / f16 2.81 GB / q8_0 1.26 GB / q6_K 1.05 GB
+- **Gate**: 9/9 PASS (f16/q8_0/q6_K x CPU/CUDA/Vulkan, f16 rays med_rel
+  ~0.001-0.003; the f32 GGUF exists for the latency baseline column;
+  q5_K retired 2026-10-01, HF-only)
 - **Official protocol** (MapAnything paper protocol = its paper protocol,
   130 sets, two-sided): deltas <= 0.3% on every metric (pointmaps
   0.05334/0.05345, AUC@5 66.9/67.1, metric_scale 0.2507/0.2511) —
   [`benchmarks/results/mapanything/bench_official_eth3d_mapanything.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/mapanything/bench_official_eth3d_mapanything.md)
-- **Real-scene reconstruction** (courtyard): AbsRel 0.07717/0.07729/0.07804
-  (f16/q8_0/q5_K) vs torch 0.07711 (delta < 0.13%); pose rot diff
-  0.01-0.10°
+- **Real-scene reconstruction** (courtyard): AbsRel 0.077170/0.077287/0.077505
+  (f16/q8_0/q6_K) vs torch 0.077106 (delta < 0.13%); pose rot diff
+  0.010-0.030°
 - **Speed** (518x518x2, P50, RTX 4090; re-measured 2026-09-24, exclusive):
 
-| Backend | torch fp32 | f32 | f16 | q8_0 | q5_K |
+| Backend | torch fp32 | f32 | f16 | q8_0 | q6_K |
 |---|---|---|---|---|---|
-| CUDA | 244.0ms | 180.7 (1.35x) | **148.6 (1.64x)** | **115.6 (2.11x)** | **109.2 (2.23x)** |
-| Vulkan | — | 151.2 (1.61x) | **137.7 (1.77x)** | 141.0 (1.73x) | 145.7 (1.67x) |
-| CPU | 12814ms | 11515 (1.11x) | 11047 (1.16x) | **10813 (1.19x)** | 11642 (1.10x) |
+| CUDA | 244.0ms | 174.2 (1.40x) | **136.0 (1.79x)** | **106.9 (2.28x)** | 114.0 (2.14x) |
+| Vulkan | — | 145.6 | **137.8 (1.77x)** | 139.8 (1.75x) | 146.9 (1.66x) |
+| CPU | 12814ms | 11515 (1.11x) | 11047 (1.16x) | **10813 (1.19x)** | — |
 
 ![mapanything recon depth](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/mapanything/recon_depth_comparison.png)
 
@@ -324,10 +341,13 @@ protocol, order-of-magnitude reference only.
   has no pose head — the official poses come from the out-of-network
   global-alignment optimizer, not ported; the CLI emits no .pose.bin, the
   bench recovers poses via closed-form Procrustes)
-- **GGUF**: f32 2.18 GB / f16 1.17 GB / q8_0 699 MB / q5_K 510 MB
-- **Gate** (fixed 512x512 S=2 frames, torch f32 ref): 12/12 PASS;
-  lp med_rel 0.0002 (f16/f32) -> 0.0016 (q8_0) -> 0.004-0.009 (q5_K);
-  the most quant-robust architecture in the repo
+- **GGUF**: f32 2.18 GB / f16 1.17 GB / q8_0 699 MB / q6_K 604 MB
+- **Gate** (fixed 512x512 S=2 frames, torch f32 ref): 12/12 PASS
+  (f32/f16/q8_0/q6_K x CPU/CUDA/Vulkan); lp med_rel 0.0002 (f16/f32) ->
+  0.0016 (q8_0) -> 0.0029-0.0039 (q6_K); the most quant-robust
+  architecture in the repo. q5_K was removed on 2026-10-01 — the fleet
+  confirmation shows q6_K beats it on EVERY official metric (depth/ATE/
+  AUC5/rot/pointmaps/scale; details below)
   ([`benchmarks/results/gate_matrix.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/gate_matrix.md))
 - **Official protocol** (130 sets x 2 views, seed 777, 512x336, two-sided;
   pose via closed-form Procrustes — the official protocol itself is
@@ -345,17 +365,26 @@ protocol, order-of-magnitude reference only.
 Full table:
 [`benchmarks/results/dust3r/bench_official_eth3d_dust3r.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/dust3r/bench_official_eth3d_dust3r.md)
 
+Per-quant cpp-only (130 sets,
+[`benchmarks/results/FLEET_QUANT_CONFIRMATION.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/FLEET_QUANT_CONFIRMATION.md)):
+**q6_K wins depth/ATE/AUC5/rot/pointmaps/scale over both q8_0 and q5_K**
+(z_depth 0.102975 vs q8_0 0.103174 / q5_K 0.103523; ATE 0.050718 vs
+0.050953 / 0.051103; AUC5 8.00 vs 7.38 / 7.54) — the 604 MB q6_K is the
+best accuracy point of the whole tier ladder; q5_K was removed on
+2026-10-01 (dominated).
+
 - **Real-scene reconstruction** (courtyard, window [5,0], 512x336): cpp f16
   vs torch AbsRel 0.132052 vs 0.132059 (delta 0.005%); pose delta rot
-  0.000° / trans 0.00003 m. q8_0/q5_K pose deltas 0.020° / 0.014°.
+  0.000° / trans 0.00003 m. q8_0/q6_K pose deltas 0.020° / 0.024°; q6_K
+  also edges out every tier on AbsRel/chamfer (0.131862/0.081195).
 - **Speed** (512x512x2, RTX 4090; CPU re-measured exclusively 2026-09-24;
   [`benchmarks/results/dust3r/speed_dust3r.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/results/dust3r/speed_dust3r.md)):
 
-| Backend | torch fp32 | f32 | f16 | q8_0 | q5_K |
+| Backend | torch fp32 | f32 | f16 | q8_0 | q6_K |
 |---|---|---|---|---|---|
-| CUDA | 148.2ms | 184.2 | **86.6 (1.71x)** | **84.9 (1.75x)** | 86.2 (1.72x) |
-| Vulkan | — | 212.3 | 201.6 (0.74x) | 216.2 (0.69x) | 210.1 (0.71x) |
-| CPU | 5559ms | 5233 (1.06x) | **5068 (1.10x)** | 5732 (0.97x) | 5653 (0.98x) |
+| CUDA | 148.2ms | 84.2 (1.76x) | **72.7 (2.04x)** | **71.8 (2.06x)** | 73.2 (2.02x) |
+| Vulkan | — | 66.9 | **64.1 (2.31x)** | 65.4 (2.27x) | 69.7 (2.13x) |
+| CPU | 5559ms | 5233 (1.06x) | **5068 (1.10x)** | 5732 (0.97x) | — |
 
 ![dust3r recon depth](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/dust3r/recon_depth_comparison.png)
 
@@ -374,9 +403,33 @@ Full table:
 | Format | Relative size | Positioning | Accuracy |
 |---|---|---|---|
 | f32 | 2x f16 | reference baseline (numeric oracle) | bit-locked to torch weights |
-| f16 | 1x | **accuracy-first default** | pose 0.0010 / depth 0.11% (gate) |
-| q8_0 | 0.57x | near-f16 accuracy, **fastest** | pose 0.0022 / depth 0.33% |
-| q5_K | 0.39x | VRAM constrained | pose 0.0177 / depth 0.37% |
+| f16 | 1x | **accuracy-first default** | pose 0.0234 / depth 0.17% (gate) |
+| q8_0 | 0.57x | near-f16 accuracy, **fastest** | pose 0.0141 / depth 0.82% |
+| q6_K | 0.48x | **~1 GB sweet spot — ETH3D depth/ATE at torch-f32 level** | pose 0.1160 / depth 0.53% (gate) |
+
+\* Gate numbers = CUDA parity on the canonical matrix frames (2026-09-30
+re-run, gate_summary.json). On the official ETH3D 130 sets: **q6_K matches
+torch f32 depth AbsRel exactly (0.020748 vs 0.020752) and beats it on ATE
+(0.006436 vs 0.006549)**; q8_0/f16 stay <= 1% relative.
+K-quant assignments are strictly data-driven (per-model 130-set verdicts,
+results/FLEET_QUANT_CONFIRMATION.md — the quant response is NOT monotonic
+in bit width, so each model ships exactly ONE measured K tier):
+
+- **q6_K for omega** (2026-09-30): dominates q5_K (+22% size buys AUC5
+  71.7 -> 76.5 and 3-6x tighter parity floors; the q5_K loss is inherent
+  to 4.5-bit weight rounding, identical in any runtime), same judgment as
+  the q4_K removal;
+- **q6_K for pi3x / dust3r** (2026-10-01): wins AUC5 by +3.7 on pi3x and
+  sweeps every official metric on dust3r;
+- **q6_K for mapanything** (2026-10-01): wins depth/rot/pointmaps/AUC5
+  (q5_K only edges metric scale by 1%);
+- **q5_K for pi3** (2026-10-01): best depth/rot/ATE/pointmaps tier
+  (0.046483 / 0.018289 / 1.086° / 0.065244); pi3's q6_K had NO best
+  metric and was removed (locally + HF);
+- **q5_K for vggt-1b** (2026-10-01): best AUC5 (63.7 vs q8_0 63.1); its
+  q6_K was the weakest tier on 5 of 7 metrics and was removed (locally +
+  HF). Removed tiers remain reproducible from the git history of
+  RESULTS.md / FLEET_QUANT_CONFIRMATION.md / the converters.
 
 - q4_K was removed on 2026-09-18 (not a valid Pareto point), see
   [`benchmarks/RESULTS.md`](https://github.com/Asher-1/map-anything-ggml/blob/main/cpp_ggml/benchmarks/RESULTS.md) §6.

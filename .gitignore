@@ -183,4 +183,6 @@ cpp_ggml/models/gguf/
 *.pt
 *.gguf
 *.json
+*.ply
+*.npy
 data/

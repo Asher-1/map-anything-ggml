@@ -103,6 +103,16 @@ np.savez(f"{out_dir}/ref.npz",
          depth=preds["depth"].float().numpy().reshape(S, H, W),
          depth_conf=preds["depth_conf"].float().numpy().reshape(S, H, W),
          **ref_extra)
+# plain final-output bins next to the stage dumps so the unified parity
+# chart (plot_charts_model.py) can read them dir-style like the other
+# families' spy references
+preds["pose_enc"].float().numpy().reshape(S, 9).tofile(f"{out_dir}/pose.bin")
+preds["depth"].float().numpy().reshape(S, H, W).tofile(f"{out_dir}/depth.bin")
+preds["depth_conf"].float().numpy().reshape(S, H, W).tofile(
+    f"{out_dir}/depth_conf.bin")
+if has_text:
+    preds["text_alignment_embedding"][0].float().numpy().reshape(
+        2048).tofile(f"{out_dir}/text_embedding.bin")
 print("torch stages dumped")
 
 # extra mlp stage dumps (block0) for gelu domain debugging

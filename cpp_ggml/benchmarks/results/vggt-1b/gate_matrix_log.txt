@@ -1,0 +1,86 @@
+== vggt f16 build-cpu ==
+  pose_enc         max 0.00047  med_rel 0.00006  (gate med < 0.005)
+  depth            max 0.00023  med_rel 0.00007  (gate med < 0.005)
+  depth_conf       max 0.00008  med_rel 0.00000  (gate med < 0.03)
+  points           max 0.00199  med_rel 0.00004  (gate med < 0.03)
+  points_conf      max 0.00001  med_rel 0.00000  (gate med < 0.1)
+  GATE: PASS  [vggt f16]
+== vggt f16 build-cuda ==
+  pose_enc         max 0.00286  med_rel 0.00064  (gate med < 0.005)
+  depth            max 0.00321  med_rel 0.00245  (gate med < 0.005)
+  depth_conf       max 0.00057  med_rel 0.00000  (gate med < 0.03)
+  points           max 0.00679  med_rel 0.00083  (gate med < 0.03)
+  points_conf      max 0.00013  med_rel 0.00000  (gate med < 0.1)
+  GATE: PASS  [vggt f16]
+== vggt f16 build-vulkan ==
+  pose_enc         max 0.00126  med_rel 0.00036  (gate med < 0.005)
+  depth            max 0.00344  med_rel 0.00248  (gate med < 0.005)
+  depth_conf       max 0.00077  med_rel 0.00000  (gate med < 0.03)
+  points           max 0.00583  med_rel 0.00076  (gate med < 0.03)
+  points_conf      max 0.00015  med_rel 0.00000  (gate med < 0.1)
+  GATE: PASS  [vggt f16]
+== vggt f32 build-cpu ==
+  pose_enc         max 0.00004  med_rel 0.00001  (gate med < 0.005)
+  depth            max 0.00019  med_rel 0.00004  (gate med < 0.005)
+  depth_conf       max 0.00005  med_rel 0.00000  (gate med < 0.03)
+  points           max 0.00108  med_rel 0.00002  (gate med < 0.03)
+  points_conf      max 0.00001  med_rel 0.00000  (gate med < 0.1)
+  GATE: PASS  [vggt f32]
+== vggt f32 build-cuda ==
+  pose_enc         max 0.00115  med_rel 0.00032  (gate med < 0.005)
+  depth            max 0.00292  med_rel 0.00205  (gate med < 0.005)
+  depth_conf       max 0.00036  med_rel 0.00000  (gate med < 0.03)
+  points           max 0.00556  med_rel 0.00076  (gate med < 0.03)
+  points_conf      max 0.00010  med_rel 0.00000  (gate med < 0.1)
+  GATE: PASS  [vggt f32]
+== vggt f32 build-vulkan ==
+  pose_enc         max 0.00122  med_rel 0.00032  (gate med < 0.005)
+  depth            max 0.00344  med_rel 0.00248  (gate med < 0.005)
+  depth_conf       max 0.00077  med_rel 0.00000  (gate med < 0.03)
+  points           max 0.00583  med_rel 0.00076  (gate med < 0.03)
+  points_conf      max 0.00015  med_rel 0.00000  (gate med < 0.1)
+  GATE: PASS  [vggt f32]
+== vggt q8_0 build-cpu ==
+  pose_enc         max 0.00993  med_rel 0.00305  (gate med < 0.015)
+  depth            max 0.00420  med_rel 0.00324  (gate med < 0.015)
+  depth_conf       max 0.00110  med_rel 0.00000  (gate med < 0.09)
+  points           max 0.00586  med_rel 0.00078  (gate med < 0.09)
+  points_conf      max 0.00012  med_rel 0.00000  (gate med < 0.3)
+  GATE: PASS  [vggt q8_0]
+== vggt q8_0 build-cuda ==
+  pose_enc         max 0.00802  med_rel 0.00205  (gate med < 0.015)
+  depth            max 0.00312  med_rel 0.00103  (gate med < 0.015)
+  depth_conf       max 0.00128  med_rel 0.00000  (gate med < 0.09)
+  points           max 0.00636  med_rel 0.00083  (gate med < 0.09)
+  points_conf      max 0.00018  med_rel 0.00000  (gate med < 0.3)
+  GATE: PASS  [vggt q8_0]
+== vggt q8_0 build-vulkan ==
+  pose_enc         max 0.00985  med_rel 0.00233  (gate med < 0.015)
+  depth            max 0.00355  med_rel 0.00171  (gate med < 0.015)
+  depth_conf       max 0.00100  med_rel 0.00000  (gate med < 0.09)
+  points           max 0.00625  med_rel 0.00080  (gate med < 0.09)
+  points_conf      max 0.00021  med_rel 0.00000  (gate med < 0.3)
+  GATE: PASS  [vggt q8_0]
+== vggt q5_K build-cpu ==
+  pose_enc         max 0.01205  med_rel 0.00264  (gate med < 0.03)
+  depth            max 0.02021  med_rel 0.01783  (gate med < 0.03)
+  depth_conf       max 0.00517  med_rel 0.00000  (gate med < 0.18)
+  points           max 0.01960  med_rel 0.00552  (gate med < 0.18)
+  points_conf      max 0.00045  med_rel 0.00000  (gate med < 0.6)
+  GATE: PASS  [vggt q5_K]
+== vggt q5_K build-cuda ==
+  pose_enc         max 0.01238  med_rel 0.00306  (gate med < 0.03)
+  depth            max 0.01696  med_rel 0.01676  (gate med < 0.03)
+  depth_conf       max 0.00567  med_rel 0.00000  (gate med < 0.18)
+  points           max 0.02457  med_rel 0.00754  (gate med < 0.18)
+  points_conf      max 0.00032  med_rel 0.00000  (gate med < 0.6)
+  GATE: PASS  [vggt q5_K]
+== vggt q5_K build-vulkan ==
+  pose_enc         max 0.01251  med_rel 0.00266  (gate med < 0.03)
+  depth            max 0.01407  med_rel 0.01375  (gate med < 0.03)
+  depth_conf       max 0.00396  med_rel 0.00000  (gate med < 0.18)
+  points           max 0.01945  med_rel 0.00503  (gate med < 0.18)
+  points_conf      max 0.00051  med_rel 0.00000  (gate med < 0.6)
+  GATE: PASS  [vggt q5_K]
+==================================
+MATRIX: 12/12 PASS, 0 FAIL

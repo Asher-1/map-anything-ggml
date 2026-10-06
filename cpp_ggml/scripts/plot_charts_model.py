@@ -27,13 +27,20 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 CPP = Path(__file__).resolve().parent.parent
-QUANT_ORDER = ["f32", "f16", "q8_0", "q5_K"]
+QUANT_ORDER = ["f32", "f16", "q8_0", "q6_K", "q5_K"]
+# q5_K is kept only for pi3/vggt-1b (the two backends where it beats or
+# complements q6_K on the official 130 sets); retired models (omega/pi3x/
+# mapanything/dust3r) simply have no q5_K latency JSONs left to draw
 QCOLOR = {"f32": "#8c564b", "f16": "#ff7f0e", "q8_0": "#2ca02c",
-          "q5_K": "#d62728"}
-GGUF_RES = {"pi3": 518, "pi3x": 518, "vggt": 518, "mapanything": 518,
-            "dust3r": 512}
-GGUF_STEM = {"pi3": "pi3", "pi3x": "pi3x", "vggt": "vggt-1b",
-             "mapanything": "mapanything", "dust3r": "dust3r"}
+          "q6_K": "#9467bd", "q5_K": "#d62728"}
+GGUF_RES = {"vggt_omega": 512, "pi3": 518, "pi3x": 518, "vggt": 518,
+            "mapanything": 518, "dust3r": 512}
+GGUF_STEM = {"vggt_omega": "vggt-omega", "pi3": "pi3", "pi3x": "pi3x",
+             "vggt": "vggt-1b", "mapanything": "mapanything",
+             "dust3r": "dust3r"}
+# gguf filename stem differs from the results/charts dir name for omega
+# (files are vggt-omega-1b-512-<q>.gguf, dirs are vggt-omega/)
+GGUF_FILE = {"vggt_omega": "vggt-omega-1b-512"}
 
 
 def load_json(p):
@@ -195,6 +202,15 @@ SPECS = {
         [("pose", (2, 9)), ("depth", (2, 518, 518))],
         [("pose", (2, 9)), ("depth", (2, 518, 518))],
         "pose_enc", "depth"),
+    # vggt-omega: same vggt family contract plus depth_conf (the third
+    # supported output); torch ref = dump_torch_stages.py's dir (which now
+    # also carries plain pose/depth/depth_conf bins), gates at 512x512
+    "vggt_omega": (
+        [("pose", (2, 9)), ("depth", (2, 512, 512)),
+         ("depth_conf", (2, 512, 512))],
+        [("pose", (2, 9)), ("depth", (2, 512, 512)),
+         ("depth_conf", (2, 512, 512))],
+        "pose_enc", "depth"),
     # mapanything torch ref stores per-view files (out_depth0/1.bin, ...);
     # main() merges them into depth_all/pts3d_all before the parity chart
     "mapanything": (
@@ -215,11 +231,11 @@ SPECS = {
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--arch", required=True,
-                    choices=["pi3", "pi3x", "vggt", "mapanything", "dust3r"],
+                    choices=["vggt_omega", "pi3", "pi3x", "vggt",
+                             "mapanything", "dust3r"],
                     help="results/charts directory stem (vggt = vggt-1b; "
-                         "dust3r runs at 512). vggt-omega is NOT handled "
-                         "here — it uses benchmarks/plot_charts.py with the "
-                         "older pytorch_baseline/e2e JSON layout")
+                             "vggt_omega = the 512 flagship, gates at 512; "
+                             "dust3r runs at 512)")
     ap.add_argument("--results", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--gate-log", default="",
@@ -243,8 +259,14 @@ def main() -> None:
     pose_key, acc_key = SPECS[arch][2], SPECS[arch][3]
 
     lat = {}
-    for p in sorted(res.glob(f"latency_{stem}_*.json")):
+    lstem = GGUF_FILE.get(arch, stem)
+    for p in sorted(res.glob(f"latency_{lstem}_*.json")):
         r = load_json(p)
+        if int(r.get("S", 2)) != 2:
+            # S-sweep throughput files (S=4/8): sorted-glob order would let
+            # them silently overwrite the S=2 baseline bars (omega's f16
+            # CUDA bar once showed the S=8 463ms instead of 93ms)
+            continue
         for q, e in r["entries"].items():
             # CLI records ggml's native backend names (CUDA0/Vulkan0);
             # normalize so chart_latency's ("CUDA","Vulkan","CPU") loop
@@ -261,6 +283,14 @@ def main() -> None:
                   .replace("cuda", "fp32 CUDA")
                   .replace("cpu", "fp32 CPU").strip("_")) or "fp32 CUDA"
         torch_refs[lbl] = r["infer_ms_p50"]
+    if not torch_refs:
+        # omega's torch baseline predates bench_torch_pi3x.py: its
+        # pytorch_baseline_*.json stores per-sample ms instead of a p50
+        for p in sorted(res.glob("pytorch_baseline_*.json")):
+            r = load_json(p)
+            samples = r.get("samples_ms") or []
+            if samples:
+                torch_refs["fp32 CUDA"] = float(np.median(samples))
 
     made = []
     if lat and chart_latency(lat, torch_refs, out / "e2e_latency_bar.png",
@@ -291,7 +321,7 @@ def main() -> None:
         made.append("pose_error_heatmap.png")
     sizes = {}
     for q in QUANT_ORDER:
-        p = CPP / "models/gguf" / f"{stem}-{q}.gguf"
+        p = CPP / "models/gguf" / f"{GGUF_FILE.get(arch, stem)}-{q}.gguf"
         if p.exists():
             sizes[q] = p.stat().st_size
     if gate and chart_pareto(gate, acc_key, sizes,

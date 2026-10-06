@@ -22,7 +22,7 @@
 | autocast / amp | model side | N/A (C++ backends have their own precision semantics, calibrated by the f16/f32 gates) |
 
 Weight variants: 512 / 416-reproduce / 256-text are all converted, each in
-f32 / f16 / q8_0 / q5_K.
+f32 / f16 / q8_0 / q6_K (q5_K removed 2026-09-30, dominated by q6_K).
 
 ## 2. vggt-1b (facebook/vggt, third_party/vggt-src)
 

@@ -1,0 +1,74 @@
+== pi3x f16 build-cpu ==
+  pose16           max 0.00398  med_rel 0.00123  (gate med < 0.01)
+  local_points     max 0.02700  med_rel 0.01498  (gate med < 0.02)
+  conf             max 0.03810  med_rel 0.02642  (gate med < 0.1)
+  scale            torch 0.279608  cpp 0.279507  rel 0.00036
+  GATE: PASS  [pi3x f16]
+== pi3x f16 build-cuda ==
+  pose16           max 0.00611  med_rel 0.00174  (gate med < 0.01)
+  local_points     max 0.03850  med_rel 0.01683  (gate med < 0.02)
+  conf             max 0.05473  med_rel 0.03341  (gate med < 0.1)
+  scale            torch 0.279608  cpp 0.279521  rel 0.00031
+  GATE: PASS  [pi3x f16]
+== pi3x f16 build-vulkan ==
+  pose16           max 0.00726  med_rel 0.00199  (gate med < 0.01)
+  local_points     max 0.04010  med_rel 0.01858  (gate med < 0.02)
+  conf             max 0.05427  med_rel 0.03419  (gate med < 0.1)
+  scale            torch 0.279608  cpp 0.279530  rel 0.00028
+  GATE: PASS  [pi3x f16]
+== pi3x f32 build-cpu ==
+  pose16           max 0.00407  med_rel 0.00125  (gate med < 0.01)
+  local_points     max 0.02633  med_rel 0.01486  (gate med < 0.02)
+  conf             max 0.03810  med_rel 0.02622  (gate med < 0.1)
+  scale            torch 0.279608  cpp 0.279502  rel 0.00038
+  GATE: PASS  [pi3x f32]
+== pi3x f32 build-cuda ==
+  pose16           max 0.00678  med_rel 0.00184  (gate med < 0.01)
+  local_points     max 0.03705  med_rel 0.01631  (gate med < 0.02)
+  conf             max 0.05213  med_rel 0.03271  (gate med < 0.1)
+  scale            torch 0.279608  cpp 0.279523  rel 0.00031
+  GATE: PASS  [pi3x f32]
+== pi3x f32 build-vulkan ==
+  pose16           max 0.00769  med_rel 0.00203  (gate med < 0.01)
+  local_points     max 0.04011  med_rel 0.01859  (gate med < 0.02)
+  conf             max 0.05427  med_rel 0.03419  (gate med < 0.1)
+  scale            torch 0.279608  cpp 0.279528  rel 0.00029
+  GATE: PASS  [pi3x f32]
+== pi3x q8_0 build-cpu ==
+  pose16           max 0.01473  med_rel 0.00193  (gate med < 0.03)
+  local_points     max 0.05899  med_rel 0.01389  (gate med < 0.06)
+  conf             max 0.06730  med_rel 0.03571  (gate med < 0.3)
+  scale            torch 0.279608  cpp 0.279515  rel 0.00033
+  GATE: PASS  [pi3x q8_0]
+== pi3x q8_0 build-cuda ==
+  pose16           max 0.01434  med_rel 0.00281  (gate med < 0.03)
+  local_points     max 0.06078  med_rel 0.01199  (gate med < 0.06)
+  conf             max 0.08458  med_rel 0.04449  (gate med < 0.3)
+  scale            torch 0.279608  cpp 0.279713  rel 0.00038
+  GATE: PASS  [pi3x q8_0]
+== pi3x q8_0 build-vulkan ==
+  pose16           max 0.01133  med_rel 0.00292  (gate med < 0.03)
+  local_points     max 0.04571  med_rel 0.02340  (gate med < 0.06)
+  conf             max 0.06165  med_rel 0.03672  (gate med < 0.3)
+  scale            torch 0.279608  cpp 0.279494  rel 0.00041
+  GATE: PASS  [pi3x q8_0]
+== pi3x q6_K build-cpu ==
+  pose16           max 0.01119  med_rel 0.00372  (gate med < 0.03)
+  local_points     max 0.15608  med_rel 0.05517  (gate med < 0.06)
+  conf             max 0.12407  med_rel 0.04297  (gate med < 0.3)
+  scale            torch 0.279608  cpp 0.278874  rel 0.00263
+  GATE: PASS  [pi3x q6_K]
+== pi3x q6_K build-cuda ==
+  pose16           max 0.00723  med_rel 0.00272  (gate med < 0.03)
+  local_points     max 0.07629  med_rel 0.03313  (gate med < 0.06)
+  conf             max 0.10700  med_rel 0.04055  (gate med < 0.3)
+  scale            torch 0.279608  cpp 0.279771  rel 0.00058
+  GATE: PASS  [pi3x q6_K]
+== pi3x q6_K build-vulkan ==
+  pose16           max 0.01985  med_rel 0.00398  (gate med < 0.03)
+  local_points     max 0.09436  med_rel 0.04435  (gate med < 0.06)
+  conf             max 0.09950  med_rel 0.04350  (gate med < 0.3)
+  scale            torch 0.279608  cpp 0.279834  rel 0.00081
+  GATE: PASS  [pi3x q6_K]
+==================================
+MATRIX: 12/12 PASS, 0 FAIL

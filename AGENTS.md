@@ -87,7 +87,7 @@ src/cli.cpp             arch-agnostic: read inputs -> builder.build -> compute -
 | 3. Converter | `scripts/convert_<model>_to_gguf.py` | dry-run enumerates every key; verify the type distribution with gguf.GGUFReader (see §3) |
 | 4. Builder | a new Impl in `src/vggt_graph.cpp` | the whole graph runs (518x518 S=2 smoke) |
 | 5. Spy reference | `scripts/spy_torch_<model>.py` | hook the official intermediates (leaf modules + counters, see pitfall #11) |
-| 6. Gate | `scripts/e2e_gate_matrix.sh <arch>` | 4 quants x CPU/CUDA/Vulkan all PASS; thresholds calibrated to that model's noise floor and written into the cmp_gate_matrix.py comments |
+| 6. Gate | `scripts/e2e_gate_matrix.sh <arch>` | the model's quant set (f32/f16/q8_0 + ONE measured K tier: q6_K for omega/pi3x/mapanything/dust3r, q5_K for pi3/vggt-1b) x CPU/CUDA/Vulkan all PASS; thresholds calibrated to that model's noise floor and written into the cmp_gate_matrix.py comments |
 | 7. Official bench | `scripts/bench_official_eth3d.py --arch <arch>` | two-sided metric-level parity (130 sets, or 10 first) |
 | 8. Paper protocol (if any) | `scripts/eval_pi3_paper_eth3d.py --arch` | two-sided delta < 1e-2; pin the paper numbers when possible |
 | 9. Launcher | the `model_info` registry in `run_mapggml.sh` + CKPTS in `scripts/download_pytorch_ckpts.py` | `./run_mapggml.sh demo --models <alias> --dry-run` prints the whole chain; infer/gate/bench pass for the new alias |
@@ -211,12 +211,12 @@ all of the above ─────────────────────
 
 | Model | gate | official bench | paper protocol | recon/charts | speed vs official |
 |---|---|---|---|---|---|
-| vggt-omega | all PASS (4 quants x 3 backends) + 256-text (cos 1.0) | ✅ 130 sets (AUC5 79.2 vs official 79.53) | — (no paper protocol) | ✅ | CUDA 0.87x (first port, strong official baseline; see omega_report.md) |
-| vggt-1b | 12/12 (+points output, S=4) | ✅ 130 sets | — | ✅ | CUDA 1.60-1.69x |
-| pi3 | 12/12 | ✅ 130 sets | ✅ 13 scenes pinned | ✅ | CUDA on par (q8_0 1.05x) |
-| pi3x | 12/12 | ✅ 130 sets | ✅ 13 scenes <= 0.0021 | ✅ | CUDA 1.44-1.50x / Vulkan 1.21x / CPU 1.15-1.35x |
-| mapanything | 9/9 | ✅ 130 sets | — (the official protocol IS its paper protocol) | ✅ (AbsRel delta < 0.13%) | CUDA 1.64-2.23x / Vulkan 1.67x / CPU q5_K 1.10x |
-| dust3r | 12/12 | ✅ 130 sets (pose via closed-form Procrustes) | — (the official protocol is its protocol) | ✅ | CUDA 1.71-1.75x / CPU f16 1.16x |
+| vggt-omega | all PASS (4 quants x 3 backends: f32/f16/q8_0/q6_K; q5_K removed 09-30) + 256-text (cos 1.0) | ✅ 130 sets (AUC5 79.2 vs official 79.53) | — (no paper protocol) | ✅ | CUDA 0.85x (strong official baseline; remeasured 10-02, see omega_report.md) |
+| vggt-1b | 12/12 (f32/f16/q8_0/q5_K — q5_K best AUC5 tier; its q6_K removed 10-01, weakest on 5/7 metrics) (+points output, S=4) | ✅ 130 sets | — | ✅ | CUDA 1.60-1.69x |
+| pi3 | 12/12 (f32/f16/q8_0/q5_K — q5_K its best depth/rot/ATE/pointmaps tier; its q6_K removed 10-01, no best metric) | ✅ 130 sets | ✅ 13 scenes pinned | ✅ | CUDA on par (q8_0 1.05x) |
+| pi3x | 12/12 (f32/f16/q8_0/q6_K; q5_K removed 10-01, dominated by q6_K) | ✅ 130 sets | ✅ 13 scenes <= 0.0021 | ✅ | CUDA 1.43-1.48x / Vulkan 1.22-1.26x / CPU 1.15-1.35x |
+| mapanything | 9/9 (f16/q8_0/q6_K; q5_K retired 10-01, HF-only) | ✅ 130 sets | — (the official protocol IS its paper protocol) | ✅ (AbsRel delta < 0.13%) | CUDA 1.79-2.28x / Vulkan 1.66-1.77x / CPU q8_0 1.19x |
+| dust3r | 12/12 (f32/f16/q8_0/q6_K; q5_K removed 10-01, dominated by q6_K) | ✅ 130 sets (pose via closed-form Procrustes) | — (the official protocol is its protocol) | ✅ | CUDA 2.02-2.06x / CPU f16 1.16x |
 
 Model selection: vggt-omega is the default (best accuracy); mapanything
 for metric scale/poses; dust3r for resource-constrained devices or

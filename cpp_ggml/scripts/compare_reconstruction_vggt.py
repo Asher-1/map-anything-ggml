@@ -42,7 +42,7 @@ from compare_reconstruction_pi3x import (  # noqa: E402  shared plotters
     chart_cloud, chart_depth, chart_metrics, parse_official_md,
 )
 
-QUANTS = ["f16", "q8_0", "q5_K"]
+QUANTS = ["f16", "q8_0", "q5_K"]  # q6_K excluded: weakest tier for vggt-1b
 
 
 @contextmanager

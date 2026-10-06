@@ -7,7 +7,7 @@
 
 | Dimension | Result |
 |---|---|
-| Gate matrix (4 quants x CPU/CUDA/Vulkan) | **12/12 PASS** (f16 lp med_rel 0.0004-0.0037) |
+| Gate matrix (4 tiers x CPU/CUDA/Vulkan) | **12/12 PASS** (f16 lp med_rel 0.0004-0.0037; K tier = q5_K — pi3's best depth/rot/ATE/pointmaps tier on the 130 sets; q6_K removed 10-01, no best metric) |
 | Official ETH3D 130 sets (MapAnything protocol, two-sided) | metric-level parity (pointmaps 0.0429/0.0423 etc.) |
 | Paper protocol, 13 scenes (Acc/Comp/NC + Umeyama/ICP) | torch/cpp deltas <= 0.01 on every metric; comp_med 0.1251/0.1236 pinned to the paper's 0.128 |
 | Real-scene reconstruction (courtyard) | f16 within 1% of torch on every metric; pose rot 0.0000° |

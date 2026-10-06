@@ -34,9 +34,10 @@ from safetensors.torch import load_file
 
 QTYPES = {
     "q8_0": (GGMLQuantizationType.Q8_0, 32, 34),
+    "q6_K": (GGMLQuantizationType.Q6_K, 256, 210),
     "q5_K": (GGMLQuantizationType.Q5_K, 256, 176),
 }
-FILE_TYPE = {"f32": 0, "f16": 1, "q8_0": 8, "q5_K": 13}
+FILE_TYPE = {"f32": 0, "f16": 1, "q8_0": 8, "q6_K": 15, "q5_K": 13}
 _LINEAR_PAT = re.compile(
     r"\.(attn\.(qkv|q|k|v|proj)|cross_attn\.(qkv|q|k|v|proj)|mlp\.(fc1|fc2|w12|w3)|"
     r"fc_t|fc_rot|more_mlps\.[02]|projects_x|projects_y|projects|linear_out|"
@@ -137,13 +138,13 @@ def main():
     ap.add_argument("checkpoint")
     ap.add_argument("output")
     ap.add_argument("--outtype", default="f16",
-                    choices=["f32", "f16", "q8_0", "q5_K"])
+                    choices=["f32", "f16", "q8_0", "q6_K", "q5_K"])
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
     def coerce(t, k):
         """omega rule: only 2-D Linear weights follow the outtype (f16 ->
-        half, q8_0/q5_K -> quantize branch); every other tensor (norms,
+        half, q8_0/q6_K/q5_K -> quantize branch); every other tensor (norms,
         biases, token params, pos_embed, conv kernels) stays f32."""
         t = t.detach().float()
         if args.outtype == "f16" and is_linear_weight(k) and t.ndim == 2:
@@ -155,7 +156,7 @@ def main():
     assert isinstance(sd, dict) and sd
 
     ctypes_lib = None
-    if args.outtype in ("q8_0", "q5_K"):
+    if args.outtype in ("q8_0", "q6_K", "q5_K"):
         ctypes_lib = load_ggml_lib()
 
     mapped, dropped = {}, []

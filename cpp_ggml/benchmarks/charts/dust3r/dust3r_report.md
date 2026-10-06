@@ -1,5 +1,9 @@
 # DUSt3R (M5) — C++ ggml integration report (2026-09-23)
 
+> Quantization note (2026-10-01): q5_K was removed — the fleet
+> confirmation shows q6_K beats it on every official ETH3D metric; the
+> q5_K rows below are the final historical measurements.
+
 Model: `naver/DUSt3R_ViTLarge_BaseDecoder_512_dpt` (571.2M, CroCo ViT-L/16
 encoder + 12 cross-attention decoder pairs + dual DPT heads). The
 **pair-wise third output family**: no pose head; poses are recovered by the

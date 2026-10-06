@@ -1,4 +1,4 @@
-# Official MapAnything ETH3D protocol (random-walk sampling, seed 777, 2 views, 512x336)
+# Official MapAnything ETH3D protocol (random-walk sampling, seed 777, 2 views, 512x336, arch=vggt_omega, torch f32 vs cpp gguf)
 
 sets evaluated: 130 (10 per scene x 13 scenes)
 

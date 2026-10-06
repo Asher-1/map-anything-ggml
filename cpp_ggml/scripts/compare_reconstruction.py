@@ -3,10 +3,10 @@
 official PyTorch checkpoint vs the C++ ggml CLI across QUANTIZATIONS,
 same window / inputs / metric code.
 
-  recon_depth_comparison.png      rows = {input/GT, torch, f16, q8_0, q5_K};
+  recon_depth_comparison.png      rows = {input/GT, torch, f16, q8_0, q6_K};
                                   cols = {depth v0, depth v1, err v0, err v1}
   recon_pointcloud_comparison.png official-style world-frame colored clouds
-                                  (GT / torch / f16 / q8_0 / q5_K), front+top
+                                  (GT / torch / f16 / q8_0 / q6_K), front+top
   recon_metrics_comparison.png    OFFICIAL 8-metric protocol bars from
                                   scripts/bench_official_eth3d.py outputs
   recon_comparison.md             this-window numeric table
@@ -40,9 +40,9 @@ from eval_cpp_cli import (  # noqa: E402
 from mapanything.utils.cropping import crop_resize_if_necessary  # noqa: E402
 from mapanything.utils.geometry import quaternion_to_rotation_matrix  # noqa: E402
 
-QUANTS = ["f16", "q8_0", "q5_K"]
+QUANTS = ["f16", "q8_0", "q6_K"]
 QUANT_COLORS = {"torch": "#1f77b4", "f16": "#ff7f0e", "q8_0": "#2ca02c",
-                "q5_K": "#d62728"}
+                "q6_K": "#9467bd"}
 
 
 def avg_dis_factor(pts_list, valids):
@@ -212,7 +212,7 @@ def _src_color(src):
         return "#1f77b4"
     if "q8_0" in src:
         return "#2ca02c"
-    if "q5_K" in src:
+    if "q6_K" in src:
         return "#d62728"
     if "cpu" in src:
         return "#9467bd"
@@ -281,7 +281,7 @@ def main() -> None:
     ap.add_argument("--official-md", nargs="*", default=[
         "bench_official_eth3d.md:torch:cpp f16 cuda",
         "bench_official_eth3d_q8_0.md:cpp:cpp q8_0 cuda",
-        "bench_official_eth3d_q5_K.md:cpp:cpp q5_K cuda",
+        "bench_official_eth3d_q6_K.md:cpp:cpp q6_K cuda",
         "bench_official_eth3d_cpu.md:cpp:cpp f16 cpu",
         "bench_official_eth3d_vulkan.md:cpp:cpp f16 vulkan"])
     args = ap.parse_args()
@@ -397,7 +397,7 @@ def main() -> None:
     # absent (e.g. official md files were not produced yet)
     if "z_depth_abs_rel" not in official:
         srcmap = {"torch": "torch", "f16": "cpp f16 cuda",
-                  "q8_0": "cpp q8_0 cuda", "q5_K": "cpp q5_K cuda"}
+                  "q8_0": "cpp q8_0 cuda", "q6_K": "cpp q6_K cuda"}
         for name, r in rows.items():
             official.setdefault("z_depth_abs_rel", {})[
                 srcmap.get(name, name)] = r["AbsRel"]

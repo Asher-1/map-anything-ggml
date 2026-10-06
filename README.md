@@ -63,8 +63,10 @@ The framework provides the **complete stack**—data processing, training, infer
 feed-forward 3D-vision models with **zero PyTorch dependency at runtime**:
 VGGT-Omega (default), VGGT-1B, Pi3, Pi3X, MapAnything and DUSt3R — each
 verified against its official PyTorch implementation with the
-quantization x backend gate matrix (f32/f16/q8_0/q5_K x
-CPU/CUDA/Vulkan) and the official MapAnything ETH3D protocol
+quantization x backend gate matrix (f32/f16/q8_0 plus ONE measured K
+tier per model — q6_K or q5_K, chosen by official-protocol accuracy —
+x CPU/CUDA/Vulkan) and the
+official MapAnything ETH3D protocol
 (130 sets, two-sided deltas < 1% everywhere).
 
 **Cross-model accuracy** (official protocol, official torch side — full
@@ -89,7 +91,7 @@ Pareto, parity scatters and courtyard reconstructions — all of them in
 
 | vggt-omega latency | gate heatmap | courtyard recon |
 |---|---|---|
-| ![latency](cpp_ggml/benchmarks/charts/vggt-omega/e2e_latency_bar.png) | ![heatmap](cpp_ggml/benchmarks/charts/vggt-omega/pose_error_heatmap.png) | ![recon](cpp_ggml/benchmarks/charts/vggt-omega/recon_depth_comparison.png) |
+| ![latency](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/e2e_latency_bar.png) | ![heatmap](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/pose_error_heatmap.png) | ![recon](https://github.com/Asher-1/map-anything-ggml/raw/main/cpp_ggml/benchmarks/charts/vggt-omega/recon_depth_comparison.png) |
 
 One command from a fresh clone (downloads checkpoints, converts to GGUF,
 builds the C++ runtime and runs inference):

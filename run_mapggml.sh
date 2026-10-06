@@ -14,7 +14,7 @@
 #   mapanything Pick this when you need METRIC SCALE and the best
 #               camera poses: metric_scale_abs_rel 0.162 (far ahead of the
 #               pack), ATE 0.0124, rot 0.92°, plus the fastest large model
-#               (CUDA q8_0/q5_K 2.1-2.2x vs official torch).
+#               (CUDA q8_0 2.1x vs official torch).
 #   dust3r      Pick this for RESOURCE-CONSTRAINED devices or maximum
 #               THROUGHPUT: pair-wise (S=2) only, but CUDA 1.71-1.75x vs
 #               official torch, smallest quantization degradation of the
@@ -46,8 +46,11 @@
 #                                          or "all" (= every model above)
 #                                          (default 512 = vggt-omega, the
 #                                          most accurate model)
-#   --quants LIST                          quants: f16,q8_0,q5_K,f32 or all
-#                                          (default f16; all = f32 f16 q8_0 q5_K)
+#   --quants LIST                          quants: f16,q8_0,f32,q6_K,q5_K or all
+#                                          (default f16; all = f16 q8_0 f32 — the
+#                                          common tiers; each model also has ONE
+#                                          measured K tier: q6_K for omega/pi3x/
+#                                          mapanything/dust3r, q5_K for pi3/vggt-1b)
 #   --dry-run                              print the commands without running
 #
 # infer/demo extra parameters:
@@ -166,8 +169,8 @@ expand_models() {  # "all" -> every registered alias
   if [[ "$MODELS" == "all" ]]; then echo "$ALL_MODELS"; else echo "$MODELS" | tr ',+' '  '; fi
 }
 
-expand_quants() {  # "all" -> all quants (f32 heaviest, kept last)
-  if [[ "$QUANTS" == "all" ]]; then echo "f16 q8_0 q5_K f32"; else echo "$QUANTS" | tr ',+' '  '; fi
+expand_quants() {  # "all" -> common tiers (the per-model K tier is passed explicitly)
+  if [[ "$QUANTS" == "all" ]]; then echo "f16 q8_0 f32"; else echo "$QUANTS" | tr ',+' '  '; fi
 }
 
 detect_backend() {

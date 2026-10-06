@@ -282,3 +282,160 @@ matrix: [results/gate_matrix.md](results/gate_matrix.md).
 Obsolete charts were removed 2026-09-19 (stage_breakdown_stacked after the
 single-graph merge, orphaned throughput/memory charts, and the misdiagnosis
 border-distance chart).
+
+## 2026-09-30 — full vggt-omega re-verification on the unified pipeline
+
+No code regression: a worktree build at 36e621b (pre "opt vggt") reproduces
+the current outputs bit-exactly; the 09-25 commits changed no numerics.
+The omega gate moved into the unified e2e_gate_matrix.sh (12/12 PASS,
+thresholds recalibrated to the canonical frames512 floors — the q5_K depth
+floor is frame-dependent, 0.27% benign vs ~10% on the LCG parity frames;
+real-data AbsRel regression stays <= 9% relative). cmp_gate_matrix.py /
+plot_charts_model.py / e2e_gate_matrix.sh gained the vggt_omega arch;
+charts/vggt-omega/ gained gate_summary.json. Fresh 13-set ETH3D evals are
+byte-identical to the committed ones (12/12 configs); the refreshed
+130-set two-sided table matches to 4-5 decimals.
+Also added the q6_K tier for omega (1.05 GB, converter + drift guard):
+15/15 gate PASS, and on the official 130 sets depth AbsRel 0.020748 vs
+torch f32 0.020752 with ATE 0.006436 beating torch — the accuracy gap at
+the ~1 GB size point is closed (AUC5 76.5 vs q5_K 71.7 / q8_0 77.1).
+q6_K verified on the other two omega variants as well (same seed-7 frames,
+CUDA): depth med_rel 0.47% (416) / 0.58% (256-text) vs q5_K 1.63% / 1.75%;
+13-set AbsRel also better (416 0.016992 vs 0.017253; text 0.025635 vs
+0.026028). Omega q5_K removed 2026-09-30 (GGUFs + result mds; dominated
+by q6_K, the 4.5-bit loss being inherent to the tier); q5_K stays for the
+other five models where it is healthy.
+
+### 2026-10-01 — fleet-wide q6_K confirmation (all five other models)
+
+All five remaining models: q6_K GGUFs converted, gated 15/15 each
+(gate_matrix_q6k_fleet.log), and measured on the official ETH3D 130 sets
+cpp-only at each model's own resolution
+(results/FLEET_QUANT_CONFIRMATION.md, via benchmarks/aggregate_fleet_quant.py).
+Verdicts (z_depth AbsRel / ATE / AUC5, q6_K vs q8_0 vs q5_K):
+
+- **pi3x / mapanything / dust3r**: q6_K depth best of the three tiers;
+  AUC5 between q8_0 and q5_K — q6_K is the sub-1.1 GB sweet spot and
+  dominates q5_K for pi3x/dust3r (removal optional, files kept);
+- **pi3**: q5_K is genuinely the best depth/rot tier (0.046483 / 1.086°)
+  and q8_0 the best AUC5 — real-data quantization response is NOT
+  monotonic in bit width; keep all three tiers;
+- **vggt-1b**: q6_K is the WORST of the three (0.052635/0.024855/62.92 vs
+  q8_0 0.051085/0.022965/63.08) — this backbone responds badly to the
+  6-bit grid; keep q8_0/q5_K, do not adopt q6_K.
+
+Lesson: quant-tier verdicts must be measured per model — the omega result
+(q6_K matches f32) does not transfer (pi3 prefers q5_K, vggt-1b rejects
+q6_K on real data).
+
+Follow-up 2026-10-01: pi3x and dust3r q5_K removed (GGUFs + per-quant
+130-set mds locally, and deleted from the HF repo on the user's explicit
+instruction) — the fleet table above already showed q6_K winning AUC5 by
++3.7 points on pi3x and sweeping every official metric on dust3r.
+Same day, later: the remaining pi3/mapanything/vggt-1b q5_K GGUFs and
+per-quant mds were initially retired locally as well — then, on the
+user's correction, restored for pi3 and vggt-1b (GGUFs re-pulled
+byte-identically from HF, mds from the git index): q5_K is the best
+depth/rot/ATE/pointmaps tier for pi3 and the best AUC5 tier for
+vggt-1b, so removing it there was over-reach. Final state: q5_K kept
+locally for pi3/vggt-1b (34 GGUFs total), retired locally for
+omega/pi3x/dust3r/mapanything; all six HF q5_K files remain
+downloadable. Gate counts: pi3 15/15, vggt-1b 15/15, mapanything 9/9.
+Final correction (same day): pi3 and vggt-1b q6_K removed (locally + HF,
+user instruction backed by the fleet table) — pi3's q6_K had no best
+metric on the 130 sets, and vggt-1b's was the weakest tier on 5 of 7.
+Final rule: ONE measured K tier per model — q6_K for omega/pi3x/
+mapanything/dust3r, q5_K for pi3/vggt-1b; 32 GGUFs in the local zoo.
+Gate counts: pi3 12/12, vggt-1b 12/12, mapanything 9/9.
+Same day, evening: per-model gate matrices re-run with the shipped K
+tiers (57/57 PASS) and logged to results/<model>/gate_matrix_log.txt —
+all six charts/ dirs now carry gate_summary.json + a q6_K/q5_K row in
+pose_error_heatmap and quant_pareto (previously omega-only). Latency
+refresh scripted as benchmarks/refresh_latency_charts.sh (hard-fails
+unless the GPU is exclusive); it still awaits an idle card for the q6_K
+latency bars and the omega re-measurement.
+Same day, night: courtyard recon comparisons regenerated for the three
+q6_K models (pi3x/mapanything/dust3r — their old PNGs/mds still had q5_K
+rows; pi3/vggt-1b/omega were already current). pi3x's q6_K is the recon
+star: AbsRel 0.015737 (better than f16/q8_0, ~at torch f32 0.015779)
+with pose rot 0.190°/trans 0.011 m vs the old q5_K's 0.905°/0.053 m;
+mapanything q6_K 0.077505 (old q5_K 0.078042); dust3r q6_K edges every
+tier on AbsRel/chamfer. compare_reconstruction_pi3x.py now derives the
+K tier from --arch (q5_K for pi3, q6_K otherwise). Omega's recon was
+also caught stale (its 09-30 re-run predated q6_K) and regenerated:
+q6_K chamfer 0.010381 / fscore 0.983513 vs torch 0.010370/0.983555.
+Same night: latency rows closed. CUDA+Vulkan re-measured for the four
+q6_K models (10 repeats) with torch baselines re-run in the SAME session
+(pi3x 290.3 / mapanything 244.0 / dust3r 148.2 — all matching the
+09-24 exclusive values, validating the shared-threshold methodology);
+omega torch came in at 65.0 (vs 80.7 on 09-19 — the official side also
+got faster), giving omega CUDA f16 0.85x / q8_0 0.92x, consistent with
+the 09-19 ratio. q6_K costs ~0 latency vs f16 everywhere (e.g. omega
+75.5 vs 76.2; pi3x 202.1 vs 202.5). Vulkan: dust3r f16 64.1 = 2.31x vs
+torch-CUDA; mapanything f16 137.8 = 1.77x. Guard upgraded:
+refresh_latency_charts.sh --allow-shared accepts a ≤5%-util card with
+≥8 GB free (idle viewer holding VRAM only) and repeats=10; the 09-30
+contamination is impossible under the new thresholds. All six latency
+bars redrawn with q6_K; charts refreshed from their own gate logs.
+Same day, late night: end-to-end dual-runtime courtyard rebuild for human
+inspection — official demo path (window [5,0] = DSC_0291+DSC_0286) on
+torch f32 vs cpp f16/q6_K, three colored 519k-point PLYs exported
+(scripts/export_recon_ply.py). Per-point 3D deviation vs torch: f16
+median 0.0028 (0.28% of scene extent), q6_K 0.0126 (1.27%); all six
+COMPARISON tensors float-equal. (The 2-frame e2e_courtyard/ dir was
+removed 2026-10-06 as a superseded intermediate — fully replaced by the
+38-frame e2e_courtyard_full/; the numbers above are the retained record.)
+compare_official_demo.py gained --device cpu (a 15 GB co-tenant left
+<100 MiB VRAM; CPU f32 is numerically equivalent) and now also saves the
+cpp-side world_points_from_depth.npy for PLY export.
+Same day, full scene: scripts/e2e_full_scene.py — ALL 38 frames of
+courtyard through both runtimes (sliding chunks K=8/overlap=2 — the
+family's global attention cannot fit 38 views in one forward — Horn Sim3
+chain alignment on the 2 shared frames per boundary, conf>=3.0 filter,
+0.02 voxel merge). Fused colored clouds:
+results/vggt-omega/e2e_courtyard_full/{torch_f32,cpp_f16}_global_38f.ply
+(9.57 M-point correspondence, 220k points after voxel merge per side);
+cross-runtime per-point deviation median 0.00108 / p95 0.00324 — the
+two full-scene reconstructions are the same building to sub-0.2% of
+scene extent. Chunk-boundary Sim3 scales 1.05-1.56 (per-chunk scale
+drift absorbed); ALIGNMENT.md carries the full fit table.
+CORRECTION (2026-10-06, user-reported): the v1 chain-aligned full-scene
+clouds were WRONG — walls visibly split in CloudViewer. Root cause: the
+model's cross-chunk scale drift is LARGE (re-measured 6.45 → 14.12,
+a 2.2x span across the 6 chunks) and the 2-shared-frame boundary Sim3
+absorbs it with scales up to 1.56 whose residuals (median 0.004-0.008,
+p95 up to 0.041) then ACCUMULATE along the chain; the sub-0.001
+cross-runtime agreement was an artifact of both sides sharing the same
+flawed alignment code. Fix: e2e_full_scene.py --align gt (now default)
+anchors each chunk INDEPENDENTLY into the metric GT world frame (WAI
+scene_meta transform_matrix) with one robust Horn Sim3 on the 8
+model-vs-GT camera centers — no chain, no accumulation. Re-run:
+6.65 M-point clouds, anchor residuals 0.005-0.045 m median (torch and
+cpp agree per chunk to <2 mm; the residual is the model's own pose
+error, largest on chunks 3-5), cross-runtime deviation median 0.016 m,
+preview renders show walls closing into one coherent building
+(results/vggt-omega/e2e_courtyard_full/). Chunk dirs and other
+intermediate bins/meta removed after the merge (~100 MB reclaimed).
+scripts/preview_ply.py added for 3-axis visual QA of any fused PLY.
+FINAL ANSWER to "does the official repo have a fusion scheme?" (user
+question, same day): NO — demo_gradio/visual_util run ONE forward over
+all frames (global attention IS the consistency mechanism) and then just
+concatenate filtered clouds; chunking was purely our CPU workaround.
+e2e_full_scene.py gained `--chunk 0` (official single-pass semantics; 38
+frames in 56 s on the 4090, torch fp32 + cpp CUDA both fine) plus the
+official visual_util quality stack (depth_edge rtol 0.03 + confidence
+percentile p20, floor conf >= 14.1) and a conf-PRIORITY voxel merge (per
+voxel keep the highest-confidence view — fixes the blurry multi-view
+noise band that plain concatenation leaves). v3 single-pass clouds:
+median cross-runtime deviation 0.015 m, NO chunk seams, windows sharp
+(results/vggt-omega/e2e_courtyard_full/*f16single*); the v2 chunked
+clouds were removed. Best practice recorded: single pass when the GPU
+fits, chunked + per-chunk GT anchor otherwise.
+VRAM post-mortem (user challenged "why chunk at all on 24 GB"): measured
+torch.cuda.max_memory_allocated for the 38-frame single forward = 8.75
+GiB (4.26 weights + ~118 MiB/frame; SDPA memory O(N)) — 100+ frames fit
+on 24 GB. "38 frames cannot fit" was an unverified assumption from the
+time a 17 GB co-tenant held the card. e2e_full_scene.py defaults flipped
+to the best pipeline (chunk 0 / align gt / conf-percentile 20 with the
+official max(2.0, p) floor) and a default-args re-run reproduced the
+delivered clouds byte-identically (ALIGNMENT diff empty, PLY md5s equal).

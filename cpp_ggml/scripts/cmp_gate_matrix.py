@@ -31,7 +31,8 @@ REF = sys.argv[4] if len(sys.argv) > 4 else ""
 # the S=4 multi-view parity checks (defaults keep old invocations working)
 if len(sys.argv) > 7:
     S, H, W = int(sys.argv[5]), int(sys.argv[6]), int(sys.argv[7])
-scale = {"f32": 1.0, "f16": 1.0, "q8_0": 3.0, "q5_K": 6.0}.get(q, 1.0)
+scale = {"f32": 1.0, "f16": 1.0, "q8_0": 3.0, "q6_K": 3.0,
+         "q5_K": 6.0}.get(q, 1.0)
 
 
 def load(p, shape=None):
@@ -142,6 +143,34 @@ elif arch == "vggt":
         t = load(f"{td}.points_conf.bin", (S, H, W))
         c = load(f"{prefix}.points_conf.bin", (S, H, W))
         ok &= rep("points_conf", t, c, 0.100 * scale)
+elif arch == "vggt_omega":
+    # vggt family contract at 512x512 (the omega ckpt's own resolution):
+    # pose_enc (S,9) + depth (S,H,W) + depth_conf (S,H,W).  The torch
+    # reference is dump_torch_stages.py's ref.npz (a directory of stage
+    # dumps), NOT prefix-style bins like the other families; the resolution
+    # is fixed here instead of the S H W argv (the matrix calls this branch
+    # without them, matching the historical e2e_gate.sh omega flow).
+    S, H, W = 2, 512, 512
+    td = REF or "/tmp/vggt_stages_512"
+    ref = np.load(f"{td}/ref.npz")
+    # the 416-reproduce / 256-text variants gate at their own resolutions:
+    # derive the geometry from the reference itself so one branch serves all
+    # three omega checkpoints (REF points at the matching stages dir)
+    S, H, W = ref["depth"].shape
+    c = load(f"{prefix}.pose.bin", (S, 9))
+    # per-quant thresholds calibrated to the canonical-frame floors with
+    # >= 1.4x margin; the pose floors are dominated by the fov tail on OOD
+    # random frames.  Historical note: q5_K was removed for omega on
+    # 2026-09-30 (dominated by q6_K); its floors were frame-dependent
+    # (~0.27% benign frames vs ~10% on these LCG frames) — see git history.
+    FLOOR = {"q6_K": (0.040, 0.170, 0.010)}   # (pose med, pose max, depth med)
+    pmed, pmax, dthr = FLOOR.get(q, (0.010 * scale, 0.050 * scale,
+                                     0.005 * scale))
+    ok &= rep("pose_enc", ref["pose_enc"], c, pmed, pmax)
+    c = load(f"{prefix}.depth.bin", (S, H, W))
+    ok &= rep("depth", ref["depth"], c, dthr)
+    c = load(f"{prefix}.depth_conf.bin", (S, H, W))
+    ok &= rep("depth_conf", ref["depth_conf"], c, 0.050 * scale)
 else:
     raise SystemExit(f"unknown arch {arch}")
 

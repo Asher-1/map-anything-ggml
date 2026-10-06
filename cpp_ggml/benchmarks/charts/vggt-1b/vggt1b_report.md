@@ -8,7 +8,7 @@
 
 | Dimension | Result |
 |---|---|
-| Gate matrix (4 quants x CPU/CUDA/Vulkan) | **12/12 PASS** (f16 pose max 0.0006-0.0025, depth med_rel 0.06-0.29%) |
+| Gate matrix (4 tiers x CPU/CUDA/Vulkan) | **12/12 PASS** (f16 pose max 0.0006-0.0025, depth med_rel 0.06-0.29%; K tier = q5_K — best AUC5 (63.7) of the three measured quants; q6_K removed 10-01, weakest tier on 5 of 7 metrics) |
 | Official ETH3D protocol (two-sided) | metric-level parity (see results/vggt-1b/) |
 | Real-scene reconstruction (courtyard) | f16 within 1% of torch on every metric; pose rot 0.014° / trans 0.2mm |
 | Speed | **CUDA f16-q5_K 1.60-1.69x, Vulkan f16 1.47x, CPU f16 1.08x faster than official torch fp32** |

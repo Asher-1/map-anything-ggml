@@ -11,7 +11,7 @@ window / inputs / metric code (--arch selects the family; both share the
   * global points are the model's world-frame cloud (pi3x world == view0).
 
 Outputs (benchmarks/charts/pi3x/):
-  recon_depth_comparison.png      rows = {input/GT, torch, f16, q8_0, q5_K}
+  recon_depth_comparison.png      rows = {input/GT, torch, f16, q8_0, q6_K}
   recon_pointcloud_comparison.png world-frame colored clouds (view0 frame)
   recon_metrics_comparison.png    official ETH3D protocol bars (130-set md)
   recon_comparison.md             numeric table for this window
@@ -43,7 +43,7 @@ from eval_cpp_cli import (  # noqa: E402
 )
 from mapanything.utils.cropping import crop_resize_if_necessary  # noqa: E402
 
-QUANTS = ["f16", "q8_0", "q5_K"]
+QUANTS = ["f16", "q8_0", "q6_K"]  # default K tier; pi3 overrides to q5_K
 
 
 @contextmanager
@@ -452,7 +452,9 @@ def main() -> None:
     preds = {"torch": depth_t}
     poses_all = {"torch": pose_t}
     pts_all = {"torch": pts_t}
-    for q in QUANTS:
+    # ONE measured K tier per model (2026-10-01): pi3 ships q5_K, the rest q6_K
+    k_tier = "q5_K" if args.arch == "pi3" else "q6_K"
+    for q in ["f16", "q8_0", k_tier]:
         gguf = Path(args.gguf_dir) / f"{args.arch}-{q}.gguf"
         if not gguf.exists():
             print(f"skip {q}: {gguf.name} missing")

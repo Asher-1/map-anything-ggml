@@ -42,8 +42,9 @@ Accuracy below is the official MapAnything ETH3D protocol (130 sets, seed
   (pair-wise S=2 only; the family's mildest quantization degradation).
 - **pi3x** — balanced alternative with a pinned paper protocol.
 
-Every model passes the quantization x backend gate matrix (f32/f16/q8_0/q5_K
-x CPU/CUDA/Vulkan; mapanything ships three quants). Charts and per-model
+Every model passes the quantization x backend gate matrix over its measured
+K tier (f32/f16/q8_0 + q6_K for omega/pi3x/mapanything/dust3r, + q5_K for
+pi3/vggt-1b) x CPU/CUDA/Vulkan. Charts and per-model
 numbers: [benchmarks/README.md](benchmarks/README.md).
 
 ## Quick start
@@ -131,10 +132,23 @@ f16.
 
 | Format | File size | pose max_abs | depth median_rel |
 |-------|---------|--------------|------------------|
-| f32   | 4.36 GB | reference | reference |
-| f16   | 2.18 GB | 0.0010 | 0.11% |
-| q8_0  | 1.25 GB | 0.0022 | 0.33% |
-| q5_K  | 0.86 GB | 0.0177 | 0.37% |
+| f32   | 4.36 GB | 0.0014 | 0.32% |
+| f16   | 2.18 GB | 0.0234 | 0.17% |
+| q8_0  | 1.25 GB | 0.0141 | 0.82% |
+| q6_K  | 1.05 GB | 0.1160 | 0.53% |
+
+\* CUDA parity on the canonical matrix frames (2026-09-30 re-run; the GPU
+f16-weight path carries slightly higher pose tail noise than q8_0 there —
+CPU casts weights to f32, see gate_matrix.md). Real-data verdict on the
+official ETH3D 130 sets: **q6_K matches torch f32 depth AbsRel exactly
+(0.020748 vs 0.020752) and beats it on ATE (0.006436 vs 0.006549)** —
+the ~1 GB sweet spot; q8_0/f16 stay <= 1% relative. q5_K was removed for
+omega on 2026-09-30 (dominated by q6_K); pi3x and dust3r followed on
+2026-10-01, as did mapanything (q6_K wins depth/rot/pointmaps/AUC5 there).
+The final rule is ONE measured K tier per model: pi3 keeps q5_K (its best
+depth/rot/ATE/pointmaps tier) and vggt-1b keeps q5_K (best AUC5 63.7);
+their q6_Ks were removed the same day (pi3's had no best metric, vggt-1b's
+was the weakest tier on 5 of 7 metrics).
 
 q4_K was removed (2026-09-18): its 4.5-bit SNR doubles the pose error vs
 q5_K while saving only 13% size — not a valid Pareto point. Per-model

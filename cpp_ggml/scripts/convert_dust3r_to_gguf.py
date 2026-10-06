@@ -38,9 +38,10 @@ from gguf.constants import GGMLQuantizationType
 
 QTYPES = {
     "q8_0": (GGMLQuantizationType.Q8_0, 32, 34),
+    "q6_K": (GGMLQuantizationType.Q6_K, 256, 210),
     "q5_K": (GGMLQuantizationType.Q5_K, 256, 176),
 }
-FILE_TYPE = {"f32": 0, "f16": 1, "q8_0": 8, "q5_K": 13}
+FILE_TYPE = {"f32": 0, "f16": 1, "q8_0": 8, "q6_K": 15, "q5_K": 13}
 
 # 2-D Linear weights follow the outtype; 4-D conv kernels and norms stay f32.
 # croco attention: fused qkv (self) + separate projq/projk/projv (cross);
@@ -153,11 +154,11 @@ def main() -> None:
     ap.add_argument("checkpoint")
     ap.add_argument("output")
     ap.add_argument("--outtype", default="f16",
-                    choices=["f32", "f16", "q8_0", "q5_K"])
+                    choices=["f32", "f16", "q8_0", "q6_K", "q5_K"])
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
-    ctypes_lib = load_ggml_lib() if args.outtype in ("q8_0", "q5_K") else None
+    ctypes_lib = load_ggml_lib() if args.outtype in ("q8_0", "q6_K", "q5_K") else None
 
     print(f"loading {args.checkpoint} ...")
     sd = load_ckpt(args.checkpoint)
