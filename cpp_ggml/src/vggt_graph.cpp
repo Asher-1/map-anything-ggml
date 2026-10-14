@@ -1039,6 +1039,8 @@ struct VGGTRuntime::Impl : IGraphBuilder {
 #ifdef MAPGGML_ENABLE_DUMP
             ggml_set_output(inter[i]);  // keep alive (dump reads)
 #endif
+            if (opts.expose_tokens)
+                ggml_set_output(inter[i]);  // keep alive (token export reads)
             inter_nodes.push_back(inter[i]);
         }
         out_last = inter.back();
@@ -1172,6 +1174,23 @@ struct VGGTRuntime::Impl : IGraphBuilder {
             log_info("dumped cached layers");
         }
 #endif
+
+        if (opts.expose_tokens) {
+            // cached-layer tokens {2C, Nagg, S} per layer, appended in
+            // cached_layer_idx order; per layer torch (S, Nagg, 2C) under
+            // the repo's memory-order rules (ne[0] fastest).
+            const int C2 = 2 * C;
+            const size_t per_layer = (size_t)C2 * Nagg * S;
+            out.cached_tokens.resize(per_layer * inter_nodes.size());
+            for (size_t i = 0; i < inter_nodes.size(); i++) {
+                ggml_backend_tensor_get(
+                    inter_nodes[i], out.cached_tokens.data() + i * per_layer,
+                    0, per_layer * sizeof(float));
+            }
+            out.cached_layer_idx.assign(m->meta.cached_layer_idx,
+                                        m->meta.cached_layer_idx + 4);
+            out.patch_token_start = Ncr;
+        }
 
         // pose {9, S} -> torch (S, 9)
         out.pose_enc.resize((size_t)9 * S);

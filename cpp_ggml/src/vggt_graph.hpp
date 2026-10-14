@@ -36,6 +36,11 @@ struct RuntimeOptions {
     // Optional path for ggml_graph_dump_dot (graph-shape debugging aid).
     // "" = off.
     std::string dot_path;
+    // Export the aggregator's cached-layer token outputs through
+    // VGGTOutputs::cached_tokens (token-consuming models such as QuerySplat
+    // build their decoder on top of them). Costs one set_output pin per
+    // cached layer (~2C*Nagg*S*4B live working set each) - off by default.
+    bool expose_tokens = false;
 };
 
 struct VGGTOutputs {
@@ -67,6 +72,21 @@ struct VGGTOutputs {
     // L2-normalized language-aligned embedding {2048} read out of the
     // final cached layer (empty when the GGUF carries no text head)
     std::vector<float> text_embedding;
+    // Token-consumer support (RuntimeOptions::expose_tokens): the
+    // aggregator's cached-layer outputs {2*embed_dim, Nagg, S} f32, appended
+    // per layer in cached_layer_idx order (each block contiguous, ne[0]
+    // fastest). Per layer this is torch (S, Nagg, 2*embed_dim) under the
+    // repo's memory-order rules (numpy reshape(d, c, b, a) for ggml
+    // ne{a, b, c, d}). Empty unless requested at construction.
+    std::vector<float> cached_tokens;
+    // The cached layer indices behind cached_tokens (e.g. {4, 11, 17, 23}).
+    std::vector<int> cached_layer_idx;
+    // Tokens per view ahead of the patch rows: [0] = camera token,
+    // [1 .. patch_token_start) = register tokens (patch_token_start
+    // == 1 + num_register_tokens). The final cached layer's first
+    // patch_token_start rows are the camera/register tokens; patch rows
+    // start there in every cached layer.
+    int patch_token_start = 0;
     // Geometry of the dense outputs. vggt-omega produces the input
     // resolution (pixel-shuffle head); original-VGGT produces the
     // patch-aligned resolution (Hp*patch, Wp*patch), which differs from the

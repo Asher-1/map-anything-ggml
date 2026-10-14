@@ -93,7 +93,7 @@ option(GGML_LLAMAFILE "Enable tinyBLAS SGEMM kernels in ggml" ON)
 # idempotently; zero patches is a valid configuration. See
 # scripts/apply_ggml_patches.sh; it can also be invoked standalone.
 execute_process(
-    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/apply_ggml_patches.sh
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_ggml_patches.sh
     RESULT_VARIABLE _ggml_patch_result
     OUTPUT_VARIABLE _ggml_patch_output
     ERROR_VARIABLE  _ggml_patch_error

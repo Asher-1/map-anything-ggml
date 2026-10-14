@@ -108,6 +108,14 @@ Debug dump switch: `MAPGGML_DUMP_STAGE=/dir vggt-cli ...` dumps selected
 intermediate nodes as raw f32 bins; pair with the per-model
 `scripts/{spy,dump}_torch_*.py` for same-location torch references.
 
+Token export (production builds, no dump flags needed):
+`RuntimeOptions::expose_tokens = true` fills `VGGTOutputs::cached_tokens`
+with the aggregator's cached-layer outputs — per layer {2*embed_dim, Nagg,
+S} f32, blocks appended in cached_layer_idx order — plus
+`VGGTOutputs::patch_token_start` (camera/register rows ahead of the patch
+rows). This is the seam token-consuming models (QuerySplat-style decoders)
+build their graphs on.
+
 **Memory-order rules for parity** (every false positive so far came from
 these):
 

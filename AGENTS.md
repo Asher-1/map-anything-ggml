@@ -73,7 +73,12 @@ src/cli.cpp             arch-agnostic: read inputs -> builder.build -> compute -
   - dust3r family: no pose (pair-wise; both pointmaps in view1's frame),
     `.local_points.bin`, `.conf.bin`, `.depth.bin`, `.points.bin`.
   A new model must fall into one of these families or explicitly extend
-  ModelOutputs + the cli write-out branch.
+  ModelOutputs + the cli write-out branch. Token-consuming models (decoders
+  built on top of the backbone tokens, e.g. QuerySplat) do not need a dump
+  build: construct the runtime with `RuntimeOptions::expose_tokens = true`
+  and read `VGGTOutputs::cached_tokens` (cached layers {2C, Nagg, S} f32
+  appended in cached_layer_idx order) plus `patch_token_start` — available
+  in every production build.
 - Shared components (encoder/rope/decoder/attention_v/block_v) are reused
   through inheritance (Pi3XImpl : Pi3Impl). Changing a shared component
   requires re-running the gates of **all** models.
