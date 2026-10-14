@@ -26,6 +26,15 @@ Backend init_backend(const char* device, int cpu_threads = 0);
 // Convenience overload: "auto".
 Backend init_backend(int cpu_threads = 0);
 
+// Opt the Vulkan backend into its f32-accuracy mode: ggml-vulkan picks its
+// shader paths from environment knobs read ONCE at device init, and the
+// default fp16/coop-mat kernels drift ~20x past the f16 CPU noise floor
+// through deep decoder stacks (querysplat gate 13/15 FAIL, gaussians corr
+// 0.968). With the knobs disabled the Vulkan gate equals the CPU floor and
+// still runs several-x faster than CPU. Call BEFORE init_backend(); user-set
+// variables are never overwritten. No-op when Vulkan is not compiled in.
+void set_vulkan_f32_accuracy_mode(bool enable = true);
+
 // ---- device enumeration (for UI dropdowns / the C API) ----
 
 struct DeviceEntry {

@@ -3,6 +3,7 @@
 #include "ggml-cpu.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <thread>
 #include <vector>
@@ -200,6 +201,24 @@ int backend_device_available(const char* device) {
     if (want == "metal") return have_metal() ? 1 : 0;
     if (want.rfind("vulkan", 0) == 0) return have_vulkan() ? 1 : 0;
     return 0;
+}
+
+void set_vulkan_f32_accuracy_mode(bool enable) {
+    if (!enable) return;
+#ifdef MAP_USE_VULKAN
+    // ggml-vulkan selects its shader paths from these knobs, read ONCE at
+    // device init. The default fp16/coop-mat kernels drift ~20x past the f16
+    // CPU noise floor through deep decoder stacks (querysplat: 13/15 seams
+    // FAIL, gaussians corr 0.968); with all of them disabled the Vulkan gate
+    // equals the CPU floor and still runs ~6.8x faster than CPU. Existing
+    // user-set variables are never overwritten (overwrite = 0).
+    for (const char* knob : {"GGML_VK_DISABLE_F16", "GGML_VK_DISABLE_COOPMAT",
+                             "GGML_VK_DISABLE_COOPMAT2", "GGML_VK_DISABLE_DOT2",
+                             "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT"})
+        setenv(knob, "1", 0);
+#else
+    (void)enable;
+#endif
 }
 
 }  // namespace mapggml
