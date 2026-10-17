@@ -1021,16 +1021,36 @@ struct VGGTRuntime::Impl : IGraphBuilder {
                             true};
         wctx = ggml_init(wp);
         if (!wctx) return false;
+        // F16-stored weights are exactly representable in F32: staging them
+        // as F32 makes the f16 GGUF tier bit-identical to the f32 tier on
+        // every backend (the CUDA f16-weight GEMM kernels otherwise quantize
+        // activations internally; the CPU backend already cast per call).
+        // K-quants keep their native type — the quant IS the tier.
+        auto staged_type = [](ggml_type t) {
+            return t == GGML_TYPE_F16 ? GGML_TYPE_F32 : t;
+        };
         for (const auto& [name, ht] : m->tensors) {
-            ggml_tensor* t = ggml_new_tensor(wctx, ht.type, 4, ht.ne);
+            ggml_tensor* t = ggml_new_tensor(wctx, staged_type(ht.type), 4, ht.ne);
             ggml_set_name(t, name.c_str());
             wt[name] = t;
         }
         wbuf = ggml_backend_alloc_ctx_tensors(wctx, be.handle);
         if (!wbuf) return false;
         for (const auto& [name, ht] : m->tensors) {
-            ggml_backend_tensor_set(wt[name], ht.data.data(), 0,
-                                    nbytes_of(ht.type, ht.ne));
+            if (ht.type == GGML_TYPE_F16) {
+                const int64_t nels =
+                    ht.ne[0] * ht.ne[1] * ht.ne[2] * ht.ne[3];
+                std::vector<float> f32((size_t)nels);
+                const auto* h16 = reinterpret_cast<const ggml_fp16_t*>(
+                    ht.data.data());
+                for (int64_t i = 0; i < nels; i++)
+                    f32[(size_t)i] = ggml_fp16_to_fp32(h16[i]);
+                ggml_backend_tensor_set(wt[name], f32.data(), 0,
+                                        nels * sizeof(float));
+            } else {
+                ggml_backend_tensor_set(wt[name], ht.data.data(), 0,
+                                        nbytes_of(ht.type, ht.ne));
+            }
         }
         log_info("weights staged: %zu tensors, buffer %.2f GB", n,
                  ggml_backend_buffer_get_size(wbuf) / 1e9);
