@@ -277,6 +277,13 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         return ggml_add(ctx, ggml_mul(ctx, ggml_norm(ctx, x, eps), nw), nb);
     }
 
+    // block quants every backend's cpy kernel can dequantize (not K-quants)
+    static bool legacy_quant(ggml_type t) {
+        return t == GGML_TYPE_Q8_0 || t == GGML_TYPE_Q4_0 ||
+               t == GGML_TYPE_Q4_1 || t == GGML_TYPE_Q5_0 ||
+               t == GGML_TYPE_Q5_1;
+    }
+
     ggml_tensor* lin(ggml_context* ctx, ggml_tensor* x, ggml_tensor* w_,
                      ggml_tensor* b) const {
         // CPU mul_mat with an F16 weight against an F32 activation produced
@@ -287,9 +294,17 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         // (verified vs f32 reference below 0.02 rel), so no cast there.
         // K-quant weights keep their native type everywhere (CUDA's cpy
         // kernel cannot cast K-quants; mul_mat dispatches to the quantized
-        // vec_dot kernels).
+        // vec_dot kernels). Exception: under f32_accuracy a Q8_0/Q4_0-family
+        // weight on CPU/CUDA is dequantized to F32 per call, because those
+        // backends' quantized GEMMs also quantize the ACTIVATION (CPU vec_dot
+        // -> q8_0, CUDA MMQ -> q8_1); measured ~1 dB render loss vs GT on the
+        // querysplat q8_0 tier, vs none on Vulkan (integer-dot off) where only
+        // the weight is rounded. The cast is a gallocr-reused graph temp.
         ggml_tensor* w32 = w_;
         if (w_->type == GGML_TYPE_F16 && be.name == "CPU") {
+            w32 = ggml_cast(ctx, w_, GGML_TYPE_F32);
+        } else if (opts.f32_accuracy && legacy_quant(w_->type) &&
+                   (be.name == "CPU" || be.name.rfind("CUDA", 0) == 0)) {
             w32 = ggml_cast(ctx, w_, GGML_TYPE_F32);
         }
         // flatten B to 2D before mul_mat (the f16-weight x 3D-f32 path

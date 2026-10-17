@@ -46,8 +46,10 @@ struct RuntimeOptions {
     // convert F32 K/V to F16 — ~5e-4 relative per call, amplified through 24
     // aggregator blocks). Costs T^2 score memory; parity-critical CUDA runs
     // need it (torch computes attention in exact F32). On CPU/Vulkan the
-    // flash path is already F32-exact, so the flag is a no-op there. Off by
-    // default.
+    // flash path is already F32-exact, so the attention part is a no-op
+    // there. It also dequantizes Q8_0/Q4_x/Q5_x Linear weights to F32 per
+    // call on CPU/CUDA, whose quantized GEMMs otherwise quantize the
+    // activation too (see lin()). Off by default.
     bool f32_accuracy = false;
     // Camera-only graph: skip the dense (DPT depth) head, leaving
     // VGGTOutputs::depth/depth_conf empty - the official
