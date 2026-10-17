@@ -49,6 +49,12 @@ struct RuntimeOptions {
     // flash path is already F32-exact, so the flag is a no-op there. Off by
     // default.
     bool f32_accuracy = false;
+    // Camera-only graph: skip the dense (DPT depth) head, leaving
+    // VGGTOutputs::depth/depth_conf empty - the official
+    // VGGTEncoder.predict_cameras path ("without decoding depths"), used by
+    // evaluators that only need poses for extra views. Honored by the
+    // vggt-omega builder; others ignore it. Off by default.
+    bool cameras_only = false;
 };
 
 struct VGGTOutputs {
@@ -112,6 +118,12 @@ class VGGTRuntime {
     // Does not take ownership of the GGUFModel; it must outlive the runtime.
     VGGTRuntime(const GGUFModel& model, Backend backend, int n_views,
                 int height, int width,
+                const RuntimeOptions& opts = RuntimeOptions());
+    // Another view count / resolution on the SAME staged weights: the graph
+    // is built anew, the weight buffer of `weights` is shared, not copied
+    // (one 1B-model buffer instead of one per shape). `weights` must be
+    // valid and outlive this runtime.
+    VGGTRuntime(const VGGTRuntime& weights, int n_views, int height, int width,
                 const RuntimeOptions& opts = RuntimeOptions());
     ~VGGTRuntime();
 

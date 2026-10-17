@@ -206,6 +206,9 @@ struct VGGTRuntime::Impl : IGraphBuilder {
     ggml_context* wctx = nullptr;
     ggml_backend_buffer_t wbuf = nullptr;
     std::map<std::string, ggml_tensor*> wt;
+    // non-null: wt points into this runtime's buffer (shared-weights
+    // constructor); wctx/wbuf stay null so only the owner frees them
+    const Impl* weights_from = nullptr;
 
     // single inference graph: backbone -> aggregator -> heads, so the
     // backbone output feeds the aggregator in-graph (no host bridge) and one
@@ -1143,10 +1146,12 @@ struct VGGTRuntime::Impl : IGraphBuilder {
             ggml_set_output(out_text);
         }
         out_pose = camera_head(gctx, inter[3]);
-        dense_head(gctx, inter, &out_depth, &out_depthc);
+        if (!opts.cameras_only) {
+            dense_head(gctx, inter, &out_depth, &out_depthc);
+            ggml_set_output(out_depth);
+            ggml_set_output(out_depthc);
+        }
         ggml_set_output(out_pose);
-        ggml_set_output(out_depth);
-        ggml_set_output(out_depthc);
 
         graph = ggml_new_graph_custom(gctx, 20480, false);
         ggml_build_forward_expand(graph, out_patches);
@@ -1156,8 +1161,10 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         if (out_text)
             ggml_build_forward_expand(graph, out_text);
         ggml_build_forward_expand(graph, out_pose);
-        ggml_build_forward_expand(graph, out_depth);
-        ggml_build_forward_expand(graph, out_depthc);
+        if (out_depth) {
+            ggml_build_forward_expand(graph, out_depth);
+            ggml_build_forward_expand(graph, out_depthc);
+        }
         galloc = ggml_gallocr_new(ggml_backend_get_default_buffer_type(be.handle));
         // give the static inputs their own buffer BEFORE the graph pool is
         // allocated, so gallocr skips them (they must survive across runs)
@@ -1308,8 +1315,10 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         };
         out.out_h = H;  // omega's pixel-shuffle head returns the input res
         out.out_w = W;
-        fetch_perm(out_depth, 1, out.depth);
-        fetch_perm(out_depthc, 1, out.depth_conf);
+        if (out_depth) {
+            fetch_perm(out_depth, 1, out.depth);
+            fetch_perm(out_depthc, 1, out.depth_conf);
+        }
 
         if (out_text) {
             constexpr int kTextDim = 2048;  // 2 * embed_dim(1024)
@@ -1355,7 +1364,9 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         Nbb = kPrefixBB + P;
         Nagg = Ncr + P;
         const auto build_t0 = std::chrono::steady_clock::now();
-        if (!stage_weights()) {
+        if (weights_from) {
+            wt = weights_from->wt;
+        } else if (!stage_weights()) {
             log_error("vggt: weight staging failed");
             return false;
         }
@@ -4411,6 +4422,23 @@ VGGTRuntime::VGGTRuntime(const GGUFModel& model, Backend backend, int n_views,
         return;
     }
     if (!impl_->init(model, backend, n_views, height, width, opts)) {
+        impl_.reset();
+    }
+}
+
+VGGTRuntime::VGGTRuntime(const VGGTRuntime& weights, int n_views, int height,
+                         int width, const RuntimeOptions& opts)
+    : s_(n_views), h_(height), w_(width) {
+    if (!weights.impl_) {
+        log_error("shared-weights runtime: the source runtime is invalid");
+        return;
+    }
+    const Impl& src = *weights.impl_;
+    impl_.reset(dynamic_cast<Impl*>(
+        create_builder(src.m->meta.architecture).release()));
+    if (!impl_) return;
+    impl_->weights_from = &src;
+    if (!impl_->init(*src.m, src.be, n_views, height, width, opts)) {
         impl_.reset();
     }
 }
