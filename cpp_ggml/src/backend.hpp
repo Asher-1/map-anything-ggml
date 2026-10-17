@@ -35,6 +35,15 @@ Backend init_backend(int cpu_threads = 0);
 // variables are never overwritten. No-op when Vulkan is not compiled in.
 void set_vulkan_f32_accuracy_mode(bool enable = true);
 
+// Opt the CUDA backend into its f32-accuracy mode: ggml-cuda runs the cuBLAS
+// GEMM path in TF32 tensor-core math (10-bit mantissa) — an env knob selects
+// exact F32 (read once at cuBLAS-handle creation, so call BEFORE init_backend
+// / the first CUDA graph run). The flash-attention F32->F16 K/V conversion is
+// bypassed at the graph level (RuntimeOptions::f32_accuracy). Without this,
+// deep attention stacks drift orders of magnitude past the CPU noise floor
+// (torch defaults allow_tf32 = false). No-op when CUDA is not compiled in.
+void set_cuda_f32_accuracy_mode(bool enable = true);
+
 // ---- device enumeration (for UI dropdowns / the C API) ----
 
 struct DeviceEntry {

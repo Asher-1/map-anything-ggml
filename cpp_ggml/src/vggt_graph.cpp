@@ -49,6 +49,42 @@ namespace {
 constexpr float kEpsLN = 1e-5f;     // torch nn.LayerNorm default (all LNs here)
 constexpr float kFovMin = 0.01f;    // camera activation fov = relu(x) + 0.01
 
+// Exact (non-flash) attention over contiguous {dh, T, nh, B} q/k/v: identical
+// math to ggml_flash_attn_ext (scale -> softmax over keys -> weighted V sum)
+// but F32 softmax/matmul throughout. The CUDA flash kernels convert F32 K/V
+// to F16 (~5e-4 relative per call), which deep stacks amplify;
+// RuntimeOptions::f32_accuracy routes here instead (CUDA parity mode).
+// Returns head-major {dim, T, B} — a drop-in replacement for
+// flash_attn_ext + reshape_3d(dim, T, B).
+ggml_tensor* exact_attention_core(ggml_context* ctx, ggml_tensor* q,
+                                  ggml_tensor* k, ggml_tensor* v,
+                                  float scale) {
+    const int64_t dh = q->ne[0], T = q->ne[1], nh = q->ne[2], B = q->ne[3];
+    ggml_tensor* qf = ggml_reshape_3d(ctx, q, dh, T, nh * B);
+    // k/v may carry a different token count (cross-attention): their own ne
+    ggml_tensor* kf = ggml_reshape_3d(ctx, k, k->ne[0], k->ne[1],
+                                      k->ne[2] * k->ne[3]);
+    ggml_tensor* vf = ggml_reshape_3d(ctx, v, v->ne[0], v->ne[1],
+                                      v->ne[2] * v->ne[3]);
+    ggml_tensor* scores = ggml_mul_mat(ctx, kf, qf);  // {Tq, Tk, nh*B}
+    scores = ggml_scale(ctx, scores, scale);
+    scores = ggml_soft_max(ctx, scores);              // normalize along keys
+    ggml_tensor* vt = ggml_cont(ctx, ggml_transpose(ctx, vf));  // {Tk, dh, m}
+    ggml_tensor* o = ggml_mul_mat(ctx, vt, scores);   // {dh, Tq, nh*B}
+    o = ggml_reshape_4d(ctx, o, dh, T, nh, B);
+    o = ggml_cont(ctx, ggml_permute(ctx, o, 0, 2, 1, 3));  // {dh, nh, T, B}
+    return ggml_reshape_3d(ctx, o, dh * nh, T, B);
+}
+
+// Dispatch: flash by default (exact on CPU/Vulkan already); exact F32
+// attention under RuntimeOptions::f32_accuracy (CUDA parity mode).
+ggml_tensor* attention_out(ggml_context* ctx, ggml_tensor* q, ggml_tensor* k,
+                           ggml_tensor* v, float scale, bool f32_accuracy) {
+    if (f32_accuracy)
+        return exact_attention_core(ctx, q, k, v, scale);
+    return ggml_flash_attn_ext(ctx, q, k, v, nullptr, scale, 0.0f, 0.0f);
+}
+
 // RopePositionEmbedding (base=100): periods_j = base^(2j/(D/2)), j < D/4.
 // Row layout for one head: angles = [Ah(D/4) | Aw(D/4)] tiled twice, so the
 // rotate pairs (i, i+D/2) reuse the same angle entries.
@@ -209,6 +245,14 @@ struct VGGTRuntime::Impl : IGraphBuilder {
     // read by the MAP_DUMP_ACTIVE/MAP_DUMP_DIR macros below, so every dump
     // site must stay inside an Impl member function
     RuntimeOptions opts;
+
+    // Exact-F32 attention is only needed where the flash kernels are not
+    // F32-exact: CUDA converts F32 K/V to F16 inside the flash kernels.
+    // CPU flash is F32 math; Vulkan flash under the f32-accuracy env knobs
+    // is F32-exact too.
+    bool f32_attn() const {
+        return opts.f32_accuracy && be.name.rfind("CUDA", 0) == 0;
+    }
 #ifdef MAPGGML_ENABLE_DUMP
     mutable std::vector<ggml_tensor*> dbg_nodes;      // dumped after stage 1
     mutable std::vector<std::string> dbg_names;
@@ -355,9 +399,9 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         ggml_tensor* q_p = q;
         ggml_tensor* k_p = k;
 #endif
-        ggml_tensor* o = ggml_flash_attn_ext(ctx, q, k, v, nullptr,
-                                             1.0f / std::sqrt((float)dh_l),
-                                             0.0f, 0.0f);
+        ggml_tensor* o = attention_out(ctx, q, k, v,
+                                       1.0f / std::sqrt((float)dh_l),
+                                       f32_attn());
         // FA result ne is {dh, nh, T, B} (ggml returns it "permuted": ne1=n_head,
         // ne2=n_tokens, see ggml.c). Reshaping straight to {dim, T, B} yields the
         // head-major token vector (c = h*dh + d) — no extra permute needed.
@@ -455,12 +499,39 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         return ggml_add(ctx, h, f);
     }
 
+    // ggml_conv_2d hardwires its im2col activations to F16, which injects
+    // f16-quantization noise into every conv output (the patch_embed input
+    // IS the image). This variant keeps im2col in F32 — identical math,
+    // identical output layout, no f16 rounding. Same rationale as the
+    // querysplat decoder's conv_2d_f32: the cached-layer token noise is
+    // amplified ~200x by near-cancellations in the downstream layer fusion
+    // (measured 2026-10-17: tokens median|d| 4.7e-3 -> 1e-5 vs torch).
+    ggml_tensor* conv_2d_f32(ggml_context* ctx, ggml_tensor* w_,
+                             ggml_tensor* in, int s0, int s1, int p0,
+                             int p1) const {
+        ggml_tensor* w32 = w_;
+        if (w_->type == GGML_TYPE_F16 && be.name == "CPU") {
+            w32 = ggml_cast(ctx, w_, GGML_TYPE_F32);
+        }
+        ggml_tensor* im2col = ggml_im2col(ctx, w32, in, s0, s1, p0, p1, 1, 1,
+                                          true, GGML_TYPE_F32);
+        ggml_tensor* r = ggml_mul_mat(
+            ctx,
+            ggml_reshape_2d(ctx, im2col, im2col->ne[0],
+                            im2col->ne[3] * im2col->ne[2] * im2col->ne[1]),
+            ggml_reshape_2d(ctx, w32,
+                            w32->ne[0] * w32->ne[1] * w32->ne[2], w32->ne[3]));
+        r = ggml_reshape_4d(ctx, r, im2col->ne[1], im2col->ne[2],
+                            im2col->ne[3], w32->ne[3]);
+        return ggml_cont(ctx, ggml_permute(ctx, r, 0, 1, 3, 2));
+    }
+
     // ---------- backbone (DinoVisionTransformer) ----------
     // Returns patch tokens {C, P, S} (x_norm_patchtokens).
     ggml_tensor* backbone(ggml_context* ctx, ggml_tensor* img) {
         const int ps = m->meta.patch_size;
-        ggml_tensor* x = ggml_conv_2d(ctx, w("bb.patch_embed.proj.weight"), img,
-                                      ps, ps, 0, 0, 1, 1);  // {Wp, Hp, C, S}
+        ggml_tensor* x = conv_2d_f32(ctx, w("bb.patch_embed.proj.weight"), img,
+                                     ps, ps, 0, 0);  // {Wp, Hp, C, S}
         x = ggml_add(ctx, x, bias4(ctx, w("bb.patch_embed.proj.bias"), C));
         x = ggml_cont(ctx, ggml_permute(ctx, x, 1, 2, 0, 3));  // {C, Wp, Hp, S}
         x = ggml_reshape_3d(ctx, x, C, P, S);
@@ -1492,9 +1563,9 @@ struct VGGTRuntime::VGGTImpl : VGGTRuntime::Impl {
             dump_node(k, "vg_" + dump_tag(p) + "_k_rope");
         }
 #endif
-        ggml_tensor* o = ggml_flash_attn_ext(ctx, q, k, v, nullptr,
-                                             1.0f / std::sqrt((float)dh_l),
-                                             0.0f, 0.0f);
+        ggml_tensor* o = attention_out(ctx, q, k, v,
+                                       1.0f / std::sqrt((float)dh_l),
+                                       f32_attn());
         o = ggml_reshape_3d(ctx, o, dim, T, B);
 #ifdef MAPGGML_ENABLE_DUMP
         if (MAP_DUMP_ACTIVE() && is_dump_block(p)) {
@@ -1577,8 +1648,8 @@ struct VGGTRuntime::VGGTImpl : VGGTRuntime::Impl {
     // slice patch tokens {C, P, S}.
     ggml_tensor* backbone_vggt(ggml_context* ctx, ggml_tensor* img) {
         const int ps = m->meta.patch_size;
-        ggml_tensor* x = ggml_conv_2d(ctx, w("bb.patch_embed.proj.weight"), img,
-                                      ps, ps, 0, 0, 1, 1);
+        ggml_tensor* x = conv_2d_f32(ctx, w("bb.patch_embed.proj.weight"), img,
+                                     ps, ps, 0, 0);
         x = ggml_add(ctx, x, bias4(ctx, w("bb.patch_embed.proj.bias"), C));
         x = ggml_cont(ctx, ggml_permute(ctx, x, 1, 2, 0, 3));
         x = ggml_reshape_3d(ctx, x, C, P, S);
@@ -3323,9 +3394,9 @@ struct VGGTRuntime::Dust3rImpl final : VGGTRuntime::VGGTImpl {
         q = ggml_cont(ctx, ggml_permute(ctx, q, 0, 2, 1, 3));
         k = ggml_cont(ctx, ggml_permute(ctx, k, 0, 2, 1, 3));
         v = ggml_cont(ctx, ggml_permute(ctx, v, 0, 2, 1, 3));
-        ggml_tensor* o = ggml_flash_attn_ext(ctx, q, k, v, nullptr,
-                                             1.0f / std::sqrt((float)dh_l),
-                                             0.0f, 0.0f);
+        ggml_tensor* o = attention_out(ctx, q, k, v,
+                                       1.0f / std::sqrt((float)dh_l),
+                                       f32_attn());
         o = ggml_reshape_3d(ctx, o, dim, T, B);
         return lin(ctx, o, w((p + ".attn.proj.weight").c_str()),
                         w((p + ".attn.proj.bias").c_str()));
@@ -3358,9 +3429,9 @@ struct VGGTRuntime::Dust3rImpl final : VGGTRuntime::VGGTImpl {
         q = ggml_cont(ctx, ggml_permute(ctx, q, 0, 2, 1, 3));
         k = ggml_cont(ctx, ggml_permute(ctx, k, 0, 2, 1, 3));
         v = ggml_cont(ctx, ggml_permute(ctx, v, 0, 2, 1, 3));
-        ggml_tensor* o = ggml_flash_attn_ext(ctx, q, k, v, nullptr,
-                                             1.0f / std::sqrt((float)dh_l),
-                                             0.0f, 0.0f);
+        ggml_tensor* o = attention_out(ctx, q, k, v,
+                                       1.0f / std::sqrt((float)dh_l),
+                                       f32_attn());
         o = ggml_reshape_3d(ctx, o, Cd, Tq, B);
         return lin(ctx, o, w((p + ".cross_attn.proj.weight").c_str()),
                         w((p + ".cross_attn.proj.bias").c_str()));
@@ -3979,9 +4050,9 @@ struct VGGTRuntime::Pi3XImpl final : VGGTRuntime::Pi3Impl {
             dump_node(kc, p + "_kr");            // {dh,T,nh,1}
         }
 #endif
-        ggml_tensor* o = ggml_flash_attn_ext(ctx, qc, kc, vc, nullptr,
-                                             1.0f / std::sqrt((float)dh_l),
-                                             0.0f, 0.0f);
+        ggml_tensor* o = attention_out(ctx, qc, kc, vc,
+                                       1.0f / std::sqrt((float)dh_l),
+                                       f32_attn());
         o = ggml_reshape_3d(ctx, o, 512, 1, 1);
 #ifdef MAPGGML_ENABLE_DUMP
         if (MAP_DUMP_ACTIVE()) dump_node(o, p + "_sdpa");

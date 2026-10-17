@@ -41,6 +41,14 @@ struct RuntimeOptions {
     // build their decoder on top of them). Costs one set_output pin per
     // cached layer (~2C*Nagg*S*4B live working set each) - off by default.
     bool expose_tokens = false;
+    // F32-accuracy attention: build attention from explicit F32
+    // softmax/matmul ops instead of ggml_flash_attn_ext (whose CUDA kernels
+    // convert F32 K/V to F16 — ~5e-4 relative per call, amplified through 24
+    // aggregator blocks). Costs T^2 score memory; parity-critical CUDA runs
+    // need it (torch computes attention in exact F32). On CPU/Vulkan the
+    // flash path is already F32-exact, so the flag is a no-op there. Off by
+    // default.
+    bool f32_accuracy = false;
 };
 
 struct VGGTOutputs {

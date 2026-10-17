@@ -221,4 +221,18 @@ void set_vulkan_f32_accuracy_mode(bool enable) {
 #endif
 }
 
+void set_cuda_f32_accuracy_mode(bool enable) {
+    if (!enable) return;
+#ifdef MAP_USE_CUDA
+    // ggml-cuda's cuBLAS path runs F32 GEMMs in TF32 tensor-core math
+    // (10-bit mantissa); the env knob selects exact F32 and is read once at
+    // cuBLAS-handle creation. The flash-attention F32->F16 K/V conversion is
+    // bypassed at the graph level (RuntimeOptions::f32_accuracy). Existing
+    // user-set variables are never overwritten (overwrite = 0).
+    setenv("GGML_CUDA_DISABLE_TF32", "1", 0);
+#else
+    (void)enable;
+#endif
+}
+
 }  // namespace mapggml

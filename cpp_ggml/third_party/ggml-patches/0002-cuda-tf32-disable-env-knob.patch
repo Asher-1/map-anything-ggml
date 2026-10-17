@@ -1,0 +1,20 @@
+diff --git a/src/ggml-cuda/common.cuh b/src/ggml-cuda/common.cuh
+index 2e78ae4..36d239f 100644
+--- a/src/ggml-cuda/common.cuh
++++ b/src/ggml-cuda/common.cuh
+@@ -1541,7 +1541,14 @@ struct ggml_backend_cuda_context {
+         if (cublas_handles[device][curr_stream_no] == nullptr) {
+             ggml_cuda_set_device(device);
+             CUBLAS_CHECK(cublasCreate(&cublas_handles[device][curr_stream_no]));
+-            CUBLAS_CHECK(cublasSetMathMode(cublas_handles[device][curr_stream_no], CUBLAS_TF32_TENSOR_OP_MATH));
++            // TF32 tensor-core math is ~2x faster on F32 GEMMs but has a
++            // 10-bit mantissa. GGML_CUDA_DISABLE_TF32=1 (the f32-accuracy
++            // mode; torch defaults allow_tf32=false) selects exact F32.
++            // Read once at handle creation — set the env before the first
++            // CUDA graph run.
++            const bool tf32_disabled = std::getenv("GGML_CUDA_DISABLE_TF32") != nullptr;
++            CUBLAS_CHECK(cublasSetMathMode(cublas_handles[device][curr_stream_no],
++                tf32_disabled ? CUBLAS_DEFAULT_MATH : CUBLAS_TF32_TENSOR_OP_MATH));
+             CUBLAS_CHECK(cublasSetStream(cublas_handles[device][curr_stream_no], stream()));
+ #if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA) && (CUBLAS_VER_MAJOR > 11 || (CUBLAS_VER_MAJOR == 11 && CUBLAS_VER_MINOR >= 2))
+             if (cublas_workspace_sizes[device] == 0) {
