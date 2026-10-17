@@ -508,12 +508,12 @@ struct VGGTRuntime::Impl : IGraphBuilder {
     // (measured 2026-10-17: tokens median|d| 4.7e-3 -> 1e-5 vs torch).
     ggml_tensor* conv_2d_f32(ggml_context* ctx, ggml_tensor* w_,
                              ggml_tensor* in, int s0, int s1, int p0,
-                             int p1) const {
+                             int p1, int d0 = 1, int d1 = 1) const {
         ggml_tensor* w32 = w_;
         if (w_->type == GGML_TYPE_F16 && be.name == "CPU") {
             w32 = ggml_cast(ctx, w_, GGML_TYPE_F32);
         }
-        ggml_tensor* im2col = ggml_im2col(ctx, w32, in, s0, s1, p0, p1, 1, 1,
+        ggml_tensor* im2col = ggml_im2col(ctx, w32, in, s0, s1, p0, p1, d0, d1,
                                           true, GGML_TYPE_F32);
         ggml_tensor* r = ggml_mul_mat(
             ctx,
@@ -780,7 +780,7 @@ struct VGGTRuntime::Impl : IGraphBuilder {
                      bool relu_residual = false) const {
         ggml_tensor* xr = ggml_relu(ctx, x);  // conv-path input AND residual base
         ggml_tensor* a = xr;
-        a = ggml_add(ctx, ggml_conv_2d(ctx, w((p + ".conv1.weight").c_str()), a,
+        a = ggml_add(ctx, conv_2d_f32(ctx, w((p + ".conv1.weight").c_str()), a,
                                        1, 1, 1, 1, 1, 1),
                      bias4(ctx, w((p + ".conv1.bias").c_str()), a->ne[2]));
 #ifdef MAPGGML_ENABLE_DUMP
@@ -792,7 +792,7 @@ struct VGGTRuntime::Impl : IGraphBuilder {
         }
 #endif
         a = ggml_relu(ctx, a);
-        a = ggml_add(ctx, ggml_conv_2d(ctx, w((p + ".conv2.weight").c_str()), a,
+        a = ggml_add(ctx, conv_2d_f32(ctx, w((p + ".conv2.weight").c_str()), a,
                                        1, 1, 1, 1, 1, 1),
                      bias4(ctx, w((p + ".conv2.bias").c_str()), a->ne[2]));
 #ifdef MAPGGML_ENABLE_DUMP
@@ -829,21 +829,21 @@ struct VGGTRuntime::Impl : IGraphBuilder {
             }
 #endif
         }
-        return ggml_add(ctx, ggml_conv_2d(ctx, w((p + ".out_conv.weight").c_str()),
+        return ggml_add(ctx, conv_2d_f32(ctx, w((p + ".out_conv.weight").c_str()),
                                           x, 1, 1, 0, 0, 1, 1),
                         bias4(ctx, w((p + ".out_conv.bias").c_str()), x->ne[2]));
     }
 
     ggml_tensor* conv1x1(ggml_context* ctx, const std::string& p, ggml_tensor* x) const {
         ggml_tensor* kw = w((p + ".weight").c_str());
-        ggml_tensor* r = ggml_conv_2d(ctx, kw, x,
+        ggml_tensor* r = conv_2d_f32(ctx, kw, x,
                                       1, 1, 0, 0, 1, 1);
         return ggml_add(ctx, r, bias4(ctx, w((p + ".bias").c_str()), r->ne[2]));
     }
 
     ggml_tensor* conv3x3(ggml_context* ctx, const std::string& p, ggml_tensor* x,
                          bool has_bias) const {
-        ggml_tensor* r = ggml_conv_2d(ctx, w((p + ".weight").c_str()), x, 1, 1,
+        ggml_tensor* r = conv_2d_f32(ctx, w((p + ".weight").c_str()), x, 1, 1,
                                       1, 1, 1, 1);
         return has_bias
                    ? ggml_add(ctx, r, bias4(ctx, w((p + ".bias").c_str()), r->ne[2]))
@@ -927,7 +927,7 @@ struct VGGTRuntime::Impl : IGraphBuilder {
                                       ctx, w((rl + ".weight").c_str()), x, 2),
                              bias4(ctx, w((rl + ".bias").c_str()), x->ne[2]));
             } else if (i == 3) {
-                x = ggml_conv_2d(ctx, w((rl + ".weight").c_str()), x, 2, 2, 1, 1,
+                x = conv_2d_f32(ctx, w((rl + ".weight").c_str()), x, 2, 2, 1, 1,
                                  1, 1);
                 x = ggml_add(ctx, x, bias4(ctx, w((rl + ".bias").c_str()), x->ne[2]));
             }  // i == 2: Identity
@@ -1865,7 +1865,7 @@ struct VGGTRuntime::VGGTImpl : VGGTRuntime::Impl {
                                       ctx, w((rl + ".weight").c_str()), x, 2),
                              bias4(ctx, w((rl + ".bias").c_str()), x->ne[2]));
             } else if (i == 3) {
-                x = ggml_conv_2d(ctx, w((rl + ".weight").c_str()), x, 2, 2, 1, 1, 1, 1);
+                x = conv_2d_f32(ctx, w((rl + ".weight").c_str()), x, 2, 2, 1, 1, 1, 1);
                 x = ggml_add(ctx, x, bias4(ctx, w((rl + ".bias").c_str()), x->ne[2]));
             }  // i == 2: Identity
             taps[i] = x;
@@ -2844,7 +2844,7 @@ struct VGGTRuntime::MapAnythingImpl final : VGGTRuntime::VGGTImpl {
     // (no final norm). Returns the full {C, 1+P, S} sequence.
     ggml_tensor* backbone_ma(ggml_context* ctx, ggml_tensor* img) {
         const int ps = m->meta.patch_size;
-        ggml_tensor* x = ggml_conv_2d(ctx, w("bb.patch_embed.proj.weight"), img,
+        ggml_tensor* x = conv_2d_f32(ctx, w("bb.patch_embed.proj.weight"), img,
                                       ps, ps, 0, 0, 1, 1);
         x = ggml_add(ctx, x, bias4(ctx, w("bb.patch_embed.proj.bias"), C));
         x = ggml_cont(ctx, ggml_permute(ctx, x, 1, 2, 0, 3));
@@ -2882,7 +2882,7 @@ struct VGGTRuntime::MapAnythingImpl final : VGGTRuntime::VGGTImpl {
         } else {
             // act_4 = Sequential(Conv2d, Conv2d) -> keys 3.0.0 / 3.0.1
             x = conv1x1(ctx, p + "0.0", x);
-            x = ggml_conv_2d(ctx, w((p + "0.1.weight").c_str()), x, 2, 2, 1, 1,
+            x = conv_2d_f32(ctx, w((p + "0.1.weight").c_str()), x, 2, 2, 1, 1,
                              1, 1);
             x = ggml_add(ctx, x, bias4(ctx, w((p + "0.1.bias").c_str()),
                                       x->ne[2]));
@@ -3517,7 +3517,7 @@ struct VGGTRuntime::Dust3rImpl final : VGGTRuntime::VGGTImpl {
                                    x->ne[2]));
             } else if (i == 3) {
                 x = ggml_add(ctx,
-                             ggml_conv_2d(ctx, w((p + ".1.weight").c_str()),
+                             conv_2d_f32(ctx, w((p + ".1.weight").c_str()),
                                           x, 2, 2, 1, 1, 1, 1),
                              bias4(ctx, w((p + ".1.bias").c_str()),
                                    x->ne[2]));
@@ -3916,7 +3916,7 @@ struct VGGTRuntime::Pi3XImpl final : VGGTRuntime::Pi3Impl {
     ggml_tensor* conv3x3_rep(ggml_context* ctx, ggml_tensor* x,
                              const std::string& p) {
         ggml_tensor* xp = ggml_cont(ctx, rep_pad2(ctx, x));
-        ggml_tensor* o = ggml_conv_2d(ctx, w((p + ".weight").c_str()), xp,
+        ggml_tensor* o = conv_2d_f32(ctx, w((p + ".weight").c_str()), xp,
                                       1, 1, 0, 0, 1, 1);
         return ggml_add(ctx, o, bias4(ctx, w((p + ".bias").c_str()),
                                      o->ne[2]));
