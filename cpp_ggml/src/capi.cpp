@@ -37,6 +37,7 @@ struct Options {
     int threads = 0;
     int image_size = 0;  // 0 = checkpoint's nominal resolution
     std::string resize_mode = "balanced";
+    int f32_accuracy = 1;  // GPU f32-accuracy profile (vulkan + cuda)
 };
 
 // Session: one GGUF checkpoint + a lazily (re)built runtime for the current
@@ -182,6 +183,11 @@ void mapggml_options_set_resize_mode(mapggml_options* opts, const char* mode) {
     ((Options*)opts)->resize_mode = mode;
 }
 
+void mapggml_options_set_f32_accuracy(mapggml_options* opts, int enable) {
+    if (!opts || enable < 0) return;
+    ((Options*)opts)->f32_accuracy = enable ? 1 : 0;
+}
+
 void* mapggml_load(const char* gguf_path, const mapggml_options* opts) {
     if (!gguf_path || !*gguf_path) {
         set_last_error("gguf_path is NULL or empty");
@@ -190,7 +196,12 @@ void* mapggml_load(const char* gguf_path, const mapggml_options* opts) {
     try {
         Ctx* c = new Ctx();
         if (opts) c->opts = *(const Options*)opts;
-        c->backend = init_backend(c->opts.device.c_str(), c->opts.threads);
+        BackendOptions bopts;
+        bopts.device = c->opts.device;
+        bopts.cpu_threads = c->opts.threads;
+        bopts.vulkan_f32_accuracy = c->opts.f32_accuracy != 0;
+        bopts.cuda_f32_accuracy = c->opts.f32_accuracy != 0;
+        c->backend = init_backend(bopts);
         c->model = load_gguf(gguf_path);
         if (!c->model) {
             set_last_error("failed to load GGUF (see the process log)");
@@ -343,7 +354,11 @@ int mapggml_device_available(const char* device) {
 
 int mapggml_warmup_backend(const char* device) {
     try {
-        Backend be = init_backend(device ? device : "auto", 0);
+        // default accuracy profile — the same one mapggml_load applies when
+        // the caller leaves f32_accuracy at its default
+        BackendOptions bopts;
+        bopts.device = device ? device : "auto";
+        Backend be = init_backend(bopts);
         return be.handle ? 0 : -1;
     } catch (...) {
         return -1;

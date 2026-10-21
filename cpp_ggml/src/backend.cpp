@@ -82,10 +82,40 @@ std::string to_lower_ascii(const char* s) {
     return out;
 }
 
+// Vendored ggml reads its accuracy knobs ONCE at device init from the
+// process environment; init_backend resolves the explicit BackendOptions
+// flags and transports them through that mechanism (overwrite=0 keeps any
+// variable the user exported before process start). Not part of the public
+// interface — hosts configure everything through BackendOptions.
+void apply_vulkan_f32_accuracy_knobs() {
+#ifdef MAP_USE_VULKAN
+    // The default fp16/coop-mat kernels drift ~20x past the f16 CPU noise
+    // floor through deep decoder stacks (querysplat: 13/15 seams FAIL,
+    // gaussians corr 0.968); with all of them disabled the Vulkan gate
+    // equals the CPU floor and still runs ~6.8x faster than CPU.
+    for (const char* knob : {"GGML_VK_DISABLE_F16", "GGML_VK_DISABLE_COOPMAT",
+                             "GGML_VK_DISABLE_COOPMAT2", "GGML_VK_DISABLE_DOT2",
+                             "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT"})
+        setenv(knob, "1", 0);
+#endif
+}
+
+void apply_cuda_f32_accuracy_knobs() {
+#ifdef MAP_USE_CUDA
+    // ggml-cuda's cuBLAS path runs F32 GEMMs in TF32 tensor-core math
+    // (10-bit mantissa); the knob selects exact F32 (torch-parity).
+    setenv("GGML_CUDA_DISABLE_TF32", "1", 0);
+#endif
+}
+
 }  // namespace
 
-Backend init_backend(const char* device, int cpu_threads) {
+Backend init_backend(const BackendOptions& opts) {
+    if (opts.vulkan_f32_accuracy) apply_vulkan_f32_accuracy_knobs();
+    if (opts.cuda_f32_accuracy) apply_cuda_f32_accuracy_knobs();
+
     Backend b;
+    const char* device = opts.device.c_str();
     const std::string want = to_lower_ascii(device);
     ggml_backend_t gpu = nullptr;
 
@@ -144,8 +174,15 @@ Backend init_backend(const char* device, int cpu_threads) {
                   device ? device : "auto");
         return b;
     }
-    set_cpu_threads(b.handle, cpu_threads);
+    set_cpu_threads(b.handle, opts.cpu_threads);
     return b;
+}
+
+Backend init_backend(const char* device, int cpu_threads) {
+    BackendOptions o;
+    o.device = device ? device : "auto";
+    o.cpu_threads = cpu_threads;
+    return init_backend(o);
 }
 
 Backend init_backend(int cpu_threads) { return init_backend("auto", cpu_threads); }
@@ -201,38 +238,6 @@ int backend_device_available(const char* device) {
     if (want == "metal") return have_metal() ? 1 : 0;
     if (want.rfind("vulkan", 0) == 0) return have_vulkan() ? 1 : 0;
     return 0;
-}
-
-void set_vulkan_f32_accuracy_mode(bool enable) {
-    if (!enable) return;
-#ifdef MAP_USE_VULKAN
-    // ggml-vulkan selects its shader paths from these knobs, read ONCE at
-    // device init. The default fp16/coop-mat kernels drift ~20x past the f16
-    // CPU noise floor through deep decoder stacks (querysplat: 13/15 seams
-    // FAIL, gaussians corr 0.968); with all of them disabled the Vulkan gate
-    // equals the CPU floor and still runs ~6.8x faster than CPU. Existing
-    // user-set variables are never overwritten (overwrite = 0).
-    for (const char* knob : {"GGML_VK_DISABLE_F16", "GGML_VK_DISABLE_COOPMAT",
-                             "GGML_VK_DISABLE_COOPMAT2", "GGML_VK_DISABLE_DOT2",
-                             "GGML_VK_DISABLE_INTEGER_DOT_PRODUCT"})
-        setenv(knob, "1", 0);
-#else
-    (void)enable;
-#endif
-}
-
-void set_cuda_f32_accuracy_mode(bool enable) {
-    if (!enable) return;
-#ifdef MAP_USE_CUDA
-    // ggml-cuda's cuBLAS path runs F32 GEMMs in TF32 tensor-core math
-    // (10-bit mantissa); the env knob selects exact F32 and is read once at
-    // cuBLAS-handle creation. The flash-attention F32->F16 K/V conversion is
-    // bypassed at the graph level (RuntimeOptions::f32_accuracy). Existing
-    // user-set variables are never overwritten (overwrite = 0).
-    setenv("GGML_CUDA_DISABLE_TF32", "1", 0);
-#else
-    (void)enable;
-#endif
 }
 
 }  // namespace mapggml

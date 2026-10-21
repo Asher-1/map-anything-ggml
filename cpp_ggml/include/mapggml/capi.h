@@ -78,6 +78,12 @@ MAPGGML_CAPI void mapggml_options_set_image_size(mapggml_options* opts,
  * value. Only affects the image-view entry points. */
 MAPGGML_CAPI void mapggml_options_set_resize_mode(mapggml_options* opts,
                                                   const char* mode);
+/* f32-accuracy profile for the GPU backends (default 1, torch parity):
+ * disables ggml-vulkan's fp16/coop-mat shader paths and selects exact-F32
+ * cuBLAS GEMMs. Consumed once at the first backend device init; 0 opts into
+ * the fast (drift-prone) kernels. */
+MAPGGML_CAPI void mapggml_options_set_f32_accuracy(mapggml_options* opts,
+                                                   int enable);
 
 /* ---- context lifecycle ---- */
 
